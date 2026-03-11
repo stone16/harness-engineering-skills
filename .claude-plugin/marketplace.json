@@ -1,0 +1,9 @@
+{
+  "name": "claude-review-loop",
+  "plugins": [
+    {
+      "name": "stometa",
+      "source": "./"
+    }
+  ]
+}

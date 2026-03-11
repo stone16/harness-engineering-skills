@@ -1,0 +1,38 @@
+# claude-review-loop
+
+> Cross-LLM iterative code review plugin for Claude Code.
+
+## What it does
+
+This Claude Code plugin spawns a peer reviewer (OpenAI Codex CLI or Google Gemini CLI) to independently review your code changes. Claude Code evaluates the peer's findings, implements accepted fixes, and re-submits for re-review. The loop iterates until both AI agents reach consensus on code quality.
+
+## Key features
+
+- Fully autonomous — no human participation needed during the loop
+- Cross-LLM diversity — catches blind spots that single-model review misses
+- Iterative convergence — findings are debated, not just listed
+- Structured output — JSON logs + markdown summary per session
+- Auto-detects review scope — local diff, branch commits, PR, or specific commit
+
+## Installation
+
+```
+claude plugin marketplace add stone16/claude-review-loop
+claude plugin install stometa@claude-review-loop
+```
+
+## Usage
+
+```
+/stometa:review-loop
+```
+
+## Prerequisites
+
+- Claude Code CLI
+- Codex CLI (`npm i -g @openai/codex`) or Gemini CLI
+- Git
+
+## License
+
+Apache-2.0
