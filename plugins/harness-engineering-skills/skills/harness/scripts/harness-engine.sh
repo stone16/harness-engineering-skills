@@ -588,6 +588,10 @@ cmd_begin_checkpoint() {
   require_checkpoint
   require_git_state
 
+  # Phase gate: only allow begin-checkpoint while in init or checkpoints.
+  # Prevents starting a new checkpoint after the task has advanced to e2e or beyond.
+  require_phase "init" "checkpoints" "Task has advanced past the checkpoint phase. Start a new task instead of re-running begin-checkpoint."
+
   local gs
   gs="$(git_state_file)"
 
@@ -885,8 +889,19 @@ cmd_begin_e2e() {
   require_task_id
   require_git_state
 
+  # Phase gate: E2E can only begin after at least one checkpoint has passed.
+  require_phase "checkpoints" "Run: \$ENGINE pass-checkpoint --task-id ${TASK_ID} --checkpoint <id> before begin-e2e"
+
   local gs
   gs="$(git_state_file)"
+
+  # Reject re-begin once an E2E baseline already exists (baseline is immutable per task).
+  local existing_e2e_baseline
+  existing_e2e_baseline=$(json_get "$gs" "e2e_baseline_sha")
+  if [[ -n "$existing_e2e_baseline" ]]; then
+    echo "Error: begin-e2e already called (e2e_baseline_sha: ${existing_e2e_baseline}). Cannot re-begin." >&2
+    exit 1
+  fi
 
   local sha
   sha="$(current_sha)"
@@ -913,8 +928,21 @@ cmd_pass_e2e() {
   require_task_id
   require_git_state
 
+  # Phase gate: pass-e2e requires a prior begin-e2e (phase still "checkpoints",
+  # e2e_baseline_sha recorded). Blocks pass-e2e without begin-e2e.
+  require_phase "checkpoints" "Run: \$ENGINE begin-e2e --task-id ${TASK_ID} before pass-e2e"
+
   local gs
   gs="$(git_state_file)"
+
+  local existing_e2e_baseline
+  existing_e2e_baseline=$(json_get "$gs" "e2e_baseline_sha")
+  if [[ -z "$existing_e2e_baseline" ]]; then
+    echo "PHASE_BLOCKED" >&2
+    echo "REASON=e2e_baseline_sha not recorded — begin-e2e was never called for this task" >&2
+    echo "NEXT_STEP=Run: \$ENGINE begin-e2e --task-id ${TASK_ID}" >&2
+    exit 1
+  fi
 
   local sha
   sha="$(current_sha)"

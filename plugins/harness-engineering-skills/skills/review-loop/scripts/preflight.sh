@@ -79,7 +79,7 @@ if [[ "$SCOPE_PREF" == "auto" || "$SCOPE_PREF" == "diff" ]]; then
   UNTRACKED_FILES="$(git ls-files --others --exclude-standard 2>/dev/null)"
   if [[ -n "$LOCAL_DIFF" || -n "$STAGED_DIFF" || -n "$UNTRACKED_FILES" ]]; then
     SCOPE="local-diff"
-    UNTRACKED_COUNT="$(printf '%s' "$UNTRACKED_FILES" | sed '/^$/d' | wc -l | tr -d ' ')"
+    UNTRACKED_COUNT="$(printf '%s\n' "$UNTRACKED_FILES" | sed '/^$/d' | awk 'NF{n++} END{print n+0}')"
     DIFF_STAT="$(printf '%s\n%s\n' "$LOCAL_DIFF" "$STAGED_DIFF" | sed '/^$/d' | tail -1)"
     if [[ -n "$DIFF_STAT" && -n "$UNTRACKED_FILES" ]]; then
       SCOPE_DETAIL="${DIFF_STAT}; ${UNTRACKED_COUNT} untracked"
