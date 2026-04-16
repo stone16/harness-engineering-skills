@@ -63,8 +63,7 @@ Delegate ALL file-system and git bookkeeping to the engine.
 | `max_spec_rounds` | `3` | 1–5 |
 | `max_eval_rounds` | `3` | 1–5 |
 | `cross_model_review` | `true` | `true` → triggers `review-loop` after E2E, before PR |
-| `cross_model_peer` | `codex` | `codex`, `claude`, `gemini` — use `claude` when Codex is the host |
-| `cross_model_read_only` | `false` | `true` = report-only, `false` = iterative fix |
+| `cross_model_peer` | `codex` | `codex`, `gemini` — matches the peers supported by the bundled `review-loop` skill |
 | `auto_retro` | `true` | `false` to skip retro |
 | `claude_md_path` | `auto` | Path to CLAUDE.md. `auto` detects |
 | `max_verify_rounds` | `3` | 1–5, max iterations for full-verify fix loop |

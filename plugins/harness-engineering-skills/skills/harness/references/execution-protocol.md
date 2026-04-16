@@ -148,8 +148,8 @@ One match → load. Multiple → ask user. None → inform user.
 5. Cross-model review (ENFORCED by engine phase gate — execute automatically, do NOT ask user):
    → If cross_model_review=true (default):
      → Directly invoke `review-loop` with scope: branch (no confirmation needed)
-     → When Codex is the host, set cross_model_peer=claude for true cross-model review
-     → Default mode: read_only=false (peer finds issues, host fixes, iterate to consensus)
+     → Select a peer that differs from the host (e.g. cross_model_peer=gemini when Codex hosts)
+     → review-loop always iterates to consensus (no read-only mode in the bundled skill)
      → review-loop produces .review-loop/<session>/summary.md + rounds.json
      → If review-loop finds critical issues → fix and re-run E2E (step 4)
      → $ENGINE pass-review-loop --task-id <id>

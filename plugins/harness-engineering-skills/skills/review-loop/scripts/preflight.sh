@@ -76,13 +76,23 @@ TARGET_FILES=""
 if [[ "$SCOPE_PREF" == "auto" || "$SCOPE_PREF" == "diff" ]]; then
   LOCAL_DIFF="$(git diff --stat 2>/dev/null)"
   STAGED_DIFF="$(git diff --cached --stat 2>/dev/null)"
-  if [[ -n "$LOCAL_DIFF" || -n "$STAGED_DIFF" ]]; then
+  UNTRACKED_FILES="$(git ls-files --others --exclude-standard 2>/dev/null)"
+  if [[ -n "$LOCAL_DIFF" || -n "$STAGED_DIFF" || -n "$UNTRACKED_FILES" ]]; then
     SCOPE="local-diff"
-    SCOPE_DETAIL="$(printf '%s\n%s\n' "$LOCAL_DIFF" "$STAGED_DIFF" | sed '/^$/d' | tail -1)"
+    UNTRACKED_COUNT="$(printf '%s' "$UNTRACKED_FILES" | sed '/^$/d' | wc -l | tr -d ' ')"
+    DIFF_STAT="$(printf '%s\n%s\n' "$LOCAL_DIFF" "$STAGED_DIFF" | sed '/^$/d' | tail -1)"
+    if [[ -n "$DIFF_STAT" && -n "$UNTRACKED_FILES" ]]; then
+      SCOPE_DETAIL="${DIFF_STAT}; ${UNTRACKED_COUNT} untracked"
+    elif [[ -n "$DIFF_STAT" ]]; then
+      SCOPE_DETAIL="$DIFF_STAT"
+    else
+      SCOPE_DETAIL="${UNTRACKED_COUNT} untracked file(s)"
+    fi
     TARGET_FILES="$(
       {
         git diff --name-only 2>/dev/null
         git diff --cached --name-only 2>/dev/null
+        printf '%s\n' "$UNTRACKED_FILES"
       } | sed '/^$/d' | sort -u
     )"
   fi
@@ -170,7 +180,11 @@ cat > "$SESSION_DIR/rounds.json" << ENDJSON
 ENDJSON
 
 # --- Step 0.8: Checkpoint commit ---
-git add -A && git commit -m "review-loop: checkpoint before round 1" --allow-empty 2>/dev/null
+# Use `-a` (modifications/deletions of tracked files only) instead of `add -A`
+# to avoid sweeping untracked files — which may contain secrets (.env, creds) —
+# into the checkpoint commit on the branch under review.
+git commit -am "review-loop: checkpoint before round 1" --allow-empty 2>/dev/null \
+  || git commit -m "review-loop: checkpoint before round 1" --allow-empty 2>/dev/null
 
 # --- Step 1.1: Collect project context ---
 PROJECT_DESC=""
