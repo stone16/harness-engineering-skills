@@ -595,6 +595,16 @@ cmd_begin_checkpoint() {
   local gs
   gs="$(git_state_file)"
 
+  # Reject begin-checkpoint once E2E has begun (e2e_baseline_sha recorded) and
+  # before E2E completes. Prevents checkpoint work from overlapping E2E.
+  local gs_e2e_baseline gs_e2e_final
+  gs_e2e_baseline=$(json_get "$gs" "e2e_baseline_sha")
+  gs_e2e_final=$(json_get "$gs" "e2e_final_sha")
+  if [[ -n "$gs_e2e_baseline" && -z "$gs_e2e_final" ]]; then
+    echo "Error: E2E is in progress (e2e_baseline_sha=${gs_e2e_baseline}). Complete E2E (\$ENGINE pass-e2e) before starting new checkpoints, or abort the task." >&2
+    exit 1
+  fi
+
   # Validate: checkpoint must not already have final_sha or be aborted
   local existing_final
   existing_final=$(json_get_nested "$gs" "checkpoints.${CHECKPOINT}.final_sha")
@@ -900,6 +910,27 @@ cmd_begin_e2e() {
   existing_e2e_baseline=$(json_get "$gs" "e2e_baseline_sha")
   if [[ -n "$existing_e2e_baseline" ]]; then
     echo "Error: begin-e2e already called (e2e_baseline_sha: ${existing_e2e_baseline}). Cannot re-begin." >&2
+    exit 1
+  fi
+
+  # Require every non-aborted checkpoint to have final_sha before E2E can begin.
+  local pending_cps
+  pending_cps=$(python3 -c "
+import json, sys
+with open(sys.argv[1]) as f:
+    data = json.load(f)
+pending = []
+for cp_id, cp in (data.get('checkpoints') or {}).items():
+    if str(cp.get('aborted', '')).lower() == 'true':
+        continue
+    if not cp.get('final_sha'):
+        pending.append(cp_id)
+print(','.join(sorted(pending)))
+" "$gs")
+  if [[ -n "$pending_cps" ]]; then
+    echo "PHASE_BLOCKED" >&2
+    echo "REASON=checkpoint(s) not yet passed: ${pending_cps}" >&2
+    echo "NEXT_STEP=Run: \$ENGINE pass-checkpoint --task-id ${TASK_ID} --checkpoint <id> for each pending checkpoint, or abort them" >&2
     exit 1
   fi
 
