@@ -23,7 +23,7 @@ Cross-LLM iterative code review. Spawns a peer reviewer (Codex CLI or Gemini CLI
 
 ### `harness`
 
-Cybernetics-based multi-agent orchestration for complex tasks. Coordinates a **Planner → Generator → Evaluator → Retro** pipeline with fresh sub-agents per checkpoint (drift prevention) and persistent retro learning across tasks. Recommended flow: Claude Code plans the spec (Session 1), Codex executes autonomously (Session 2), Claude CLI reviews as the cross-model peer.
+Cybernetics-based multi-agent orchestration for complex tasks. Coordinates a **Planner → Generator → Evaluator → Retro** pipeline with fresh sub-agents per checkpoint (drift prevention) and persistent retro learning across tasks. Recommended flow: Claude Code plans the spec (Session 1), Codex executes autonomously (Session 2), and `review-loop` (Codex or Gemini CLI as peer) provides the cross-model quality gate before PR.
 
 ## Install
 

@@ -85,6 +85,6 @@ After E2E passes, `review-loop` provides the cross-model quality gate. Configure
 
 `review-loop` always runs as an iterative fix loop (peer finds issues, host fixes, iterate to consensus). There is no read-only mode in the bundled skill.
 
-`pass-review-loop` treats `.review-loop/latest/rounds.json` as a completion contract: `session.status` must be `consensus` or `read_only_complete`, and `session.total_rounds` must be at least 1.
+`pass-review-loop` treats `.review-loop/latest/rounds.json` as a completion contract: `session.status` must be `consensus`, and `session.total_rounds` must be at least 1.
 
 This is the same review-loop step that the Claude Code-hosted path runs. The peer choice is orthogonal to who hosts.

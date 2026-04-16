@@ -263,7 +263,7 @@ Sections:
 **Phase commands:**
 - `pass-checkpoint` — requires latest iteration `output-summary.md`, latest iteration `evaluation.md`, `evaluation.md` verdict PASS, and fresh `evaluator-session-id.txt`; then records final SHA.
 - `pass-e2e` — requires latest `e2e/iter-N/e2e-report.md` verdict PASS; then records final SHA and sets phase to `e2e`.
-- `pass-review-loop` — verifies `.review-loop/latest/summary.md` + `rounds.json` exist, `session.status` is `consensus` or `read_only_complete`, and `session.total_rounds >= 1`; then records the session id and sets phase to `review-loop`
+- `pass-review-loop` — verifies `.review-loop/latest/summary.md` + `rounds.json` exist, `session.status` is `consensus`, and `session.total_rounds >= 1`; then records the session id and sets phase to `review-loop`
 - `skip-review-loop` — only allowed when `cross_model_review=false` in config, sets phase to `review-loop`
 - `begin-full-verify` — requires phase `review-loop`, sets phase to `full-verify`, creates `full-verify/` directory
 - `pass-full-verify` — requires `full-verify/iter-N/verification-report.md` with verdict PASS or PASS_WITH_WARNINGS, rejects stale artifacts, records final SHA

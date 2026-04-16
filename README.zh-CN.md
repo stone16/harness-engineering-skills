@@ -23,7 +23,7 @@ Stometa 对外公开的 Claude Code 精选技能集 —— 一套我们自己每
 
 ### `harness`
 
-面向复杂任务的、基于控制论（cybernetics）的多智能体编排。它把任务驱动成一条 **Planner → Generator → Evaluator → Retro** 流水线，每个 checkpoint 使用全新的子智能体（防漂移），并跨任务持续沉淀复盘经验。推荐流程：Session 1 用 Claude Code 规划 spec，Session 2 用 Codex 自主执行，Claude CLI 作为跨模型同行评审。
+面向复杂任务的、基于控制论（cybernetics）的多智能体编排。它把任务驱动成一条 **Planner → Generator → Evaluator → Retro** 流水线，每个 checkpoint 使用全新的子智能体（防漂移），并跨任务持续沉淀复盘经验。推荐流程：Session 1 用 Claude Code 规划 spec，Session 2 用 Codex 自主执行，然后通过 `review-loop`（Codex 或 Gemini CLI 作为 peer）完成发 PR 前的跨模型质量门禁。
 
 ## 安装
 

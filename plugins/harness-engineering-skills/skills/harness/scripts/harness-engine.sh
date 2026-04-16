@@ -1105,9 +1105,9 @@ print(data.get('session', {}).get('id', ''))
 
   local normalized_status
   normalized_status=$(echo "$rl_status" | tr '[:upper:]' '[:lower:]')
-  if [[ "$normalized_status" != "consensus" && "$normalized_status" != "read_only_complete" ]]; then
+  if [[ "$normalized_status" != "consensus" ]]; then
     echo "PHASE_BLOCKED" >&2
-    echo "REASON=review-loop session ${rl_session:-unknown} status is ${rl_status}; expected consensus or read_only_complete" >&2
+    echo "REASON=review-loop session ${rl_session:-unknown} status is ${rl_status}; expected consensus" >&2
     echo "NEXT_STEP=Resolve review-loop findings until consensus, or escalate if the session ended without consensus" >&2
     exit 1
   fi
