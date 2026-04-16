@@ -11,7 +11,7 @@
   "plugins": [
     {
       "name": "harness-engineering-skills",
-      "description": "Cross-LLM iterative code review loop. Spawns Codex or Gemini as peer reviewer, loops until consensus.",
+      "description": "Two Claude Code engineering skills bundled as one plugin: review-loop (cross-LLM iterative code review with Codex or Gemini as peer) and harness (cybernetics-based Planner→Generator→Evaluator→Retro orchestration for complex tasks).",
       "version": "1.0.0",
       "source": "./plugins/harness-engineering-skills",
       "category": "code-quality"
