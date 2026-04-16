@@ -2,8 +2,10 @@
 set -uo pipefail
 
 # claude-agent-invoke.sh — Run a Claude review-role agent from Codex-hosted Harness flows.
-# Uses an installed Claude agent when available, otherwise falls back to the repo's
-# dotfiles/agents/<name>.md prompt body.
+# Resolution order for the agent definition (first existing file wins):
+#   1. $HOME/.claude/agents/<name>.md                 — user override (highest precedence)
+#   2. <plugin-root>/agents/<name>.md                 — plugin-bundled (default for plugin installs)
+#   3. <skillset-repo>/dotfiles/agents/<name>.md      — legacy, preserved for the private source repo
 
 AGENT_NAME=""
 PROMPT_FILE=""
@@ -41,12 +43,23 @@ fi
 
 command -v claude &>/dev/null || { echo "Error: claude CLI not found" >&2; exit 1; }
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-# Find the skillset repo root for fallback agent files.
+# Use BASH_SOURCE[0] (not $0) so the path is correct even when the script is
+# invoked via symlink or a shim wrapper.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Tier 1: user override — highest precedence.
+USER_AGENT_FILE="$HOME/.claude/agents/${AGENT_NAME}.md"
+
+# Tier 2: plugin-bundled agents directory.
+# Layout: plugins/<plugin>/skills/harness/scripts/claude-agent-invoke.sh
+#         plugins/<plugin>/agents/<name>.md
+# From scripts/, three `..` jumps land at <plugin>/, where `agents/` lives.
+PLUGIN_AGENT_FILE="$(cd "$SCRIPT_DIR/../../.." 2>/dev/null && pwd)/agents/${AGENT_NAME}.md"
+
+# Tier 3: legacy repo dotfiles — kept for backward compatibility with the
+# private source repo that shipped agents under dotfiles/agents/.
 # Uses git to avoid fragile relative-path assumptions about install depth.
 SKILLSET_ROOT="$(cd "$SCRIPT_DIR" && git rev-parse --show-toplevel 2>/dev/null || true)"
-
-USER_AGENT_FILE="$HOME/.claude/agents/${AGENT_NAME}.md"
 if [[ -n "$SKILLSET_ROOT" ]]; then
   REPO_AGENT_FILE="$SKILLSET_ROOT/dotfiles/agents/${AGENT_NAME}.md"
 else
@@ -207,8 +220,19 @@ if [[ -n "$RESUME_SESSION" ]]; then
     < "$PROMPT_FILE" > "$RUN_LOG" 2> "$RUN_ERR"
   exit_code=$?
 else
+  # Resolution chain (first existing file wins):
+  #   1. USER_AGENT_FILE   — ~/.claude/agents/<name>.md (user override)
+  #   2. PLUGIN_AGENT_FILE — <plugin-root>/agents/<name>.md (plugin-bundled)
+  #   3. REPO_AGENT_FILE   — <repo>/dotfiles/agents/<name>.md (legacy dotfiles)
   if [[ -f "$USER_AGENT_FILE" ]]; then
     CLAUDE_CMD=(claude --agent "$AGENT_NAME" "${common_claude_args[@]}")
+  elif [[ -n "$PLUGIN_AGENT_FILE" && -f "$PLUGIN_AGENT_FILE" ]]; then
+    AGENT_PROMPT="$(resolve_agent_prompt "$PLUGIN_AGENT_FILE")"
+    AGENT_MODEL="${MODEL_OVERRIDE:-$(resolve_agent_model "$PLUGIN_AGENT_FILE")}"
+    CLAUDE_CMD=(claude "${common_claude_args[@]}" --append-system-prompt "$AGENT_PROMPT")
+    if [[ -n "$AGENT_MODEL" ]]; then
+      CLAUDE_CMD+=(--model "$AGENT_MODEL")
+    fi
   elif [[ -n "$REPO_AGENT_FILE" && -f "$REPO_AGENT_FILE" ]]; then
     AGENT_PROMPT="$(resolve_agent_prompt "$REPO_AGENT_FILE")"
     AGENT_MODEL="${MODEL_OVERRIDE:-$(resolve_agent_model "$REPO_AGENT_FILE")}"
@@ -217,7 +241,12 @@ else
       CLAUDE_CMD+=(--model "$AGENT_MODEL")
     fi
   else
-    echo "Error: Agent not found in ~/.claude/agents or repo dotfiles: $AGENT_NAME" >&2
+    {
+      echo "Error: Agent '$AGENT_NAME' not found. Checked the following paths:"
+      echo "  1. user override:     $USER_AGENT_FILE"
+      echo "  2. plugin-bundled:    ${PLUGIN_AGENT_FILE:-<unresolved>}"
+      echo "  3. legacy dotfiles:   ${REPO_AGENT_FILE:-<unresolved — not in a git repo>}"
+    } >&2
     exit 1
   fi
 

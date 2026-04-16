@@ -25,7 +25,7 @@ Prefer the installed skill copy when present:
 
 ```bash
 HARNESS_DIR="$(find ~/.codex/skills -path '*/harness' -type d 2>/dev/null | head -1)"
-[[ -z "$HARNESS_DIR" ]] && HARNESS_DIR="$(find . -path '*/plugins/stometa-skillset/skills/harness' -type d 2>/dev/null | head -1)"
+[[ -z "$HARNESS_DIR" ]] && HARNESS_DIR="$(find . -path '*/plugins/harness-engineering-skills/skills/harness' -type d 2>/dev/null | head -1)"
 
 ENGINE="$HARNESS_DIR/scripts/harness-engine.sh"
 CLAUDE_AGENT="$HARNESS_DIR/scripts/claude-agent-invoke.sh"

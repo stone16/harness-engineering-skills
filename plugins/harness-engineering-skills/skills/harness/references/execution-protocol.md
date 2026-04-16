@@ -329,7 +329,11 @@ When Generator encounters conflicting rules:
 
 ## Agent Files
 
-Agent definitions live in `~/.claude/agents/` (deployed via dotfiles/agents/ symlink). In Codex-hosted mode, `scripts/claude-agent-invoke.sh` can also read the checked-in `dotfiles/agents/` copies directly.
+Agent definitions are resolved by `scripts/claude-agent-invoke.sh` via a 3-tier lookup (first existing file wins):
+
+1. `~/.claude/agents/<name>.md` — user override (highest precedence).
+2. `<plugin-root>/agents/<name>.md` — plugin-bundled; the primary location for plugin-distributed agents (e.g. `plugins/harness-engineering-skills/agents/`).
+3. `<repo-root>/dotfiles/agents/<name>.md` — legacy path, preserved for backward compatibility with the private source repo that shipped agents under `dotfiles/agents/`.
 
 | Agent | File | Preloaded Skills | Role |
 |-------|------|-----------------|------|

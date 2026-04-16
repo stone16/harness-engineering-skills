@@ -34,15 +34,14 @@ Session 2 (Codex)       → Execute checkpoints → Evaluate → E2E → Full-ve
 
 ## Prerequisites
 
-1. `sto` plugin installed (Claude Code): `claude plugin install sto@stometa-private-marketplace --scope user`
-2. `superpowers` plugin installed (Claude Code): Generator preloads TDD, verification, debugging skills
-3. Reviewer role definitions: `harness-spec-evaluator.md`, `harness-generator.md`, `harness-evaluator.md`, `harness-retro.md` in `~/.claude/agents/` or `dotfiles/agents/`
-4. `python3` on PATH (engine JSON operations)
-5. `git` repository initialized
-6. For Codex-hosted execution: `claude` CLI on PATH for sub-agent dispatch and review-loop
+1. `superpowers` plugin installed (Claude Code): Generator preloads TDD, verification, debugging skills
+2. Reviewer role definitions: `harness-spec-evaluator.md`, `harness-generator.md`, `harness-evaluator.md`, `harness-retro.md` — ship with this plugin at `plugins/harness-engineering-skills/agents/`; user overrides may live at `~/.claude/agents/harness-*.md`
+3. `python3` on PATH (engine JSON operations)
+4. `git` repository initialized
+5. For Codex-hosted execution: `claude` CLI on PATH for sub-agent dispatch and review-loop
 
 Verify (Claude Code): `claude plugin list | grep superpowers`
-Verify (review roles): `ls ~/.claude/agents/harness-*.md` or `ls dotfiles/agents/harness-*.md`
+Verify (review roles): `ls ~/.claude/plugins/**/plugins/harness-engineering-skills/agents/harness-*.md 2>/dev/null || ls plugins/harness-engineering-skills/agents/harness-*.md` (plugin-bundled) and `ls ~/.claude/agents/harness-*.md 2>/dev/null` (optional user override)
 Verify (Codex): `codex --version && claude --version`
 
 ## Engine Script
@@ -53,7 +52,7 @@ All deterministic state management is handled by `harness-engine.sh`. To locate 
 ENGINE="$(find ~/.claude/plugins/cache -path "*/harness/scripts/harness-engine.sh" -type f 2>/dev/null | head -1)"
 ```
 
-If not found, try `find ~/.claude/skills -path "*/harness/scripts/harness-engine.sh"` or `find ~/.codex/skills -path "*/harness/scripts/harness-engine.sh"` as fallback. In a checked-out repo, `plugins/stometa-skillset/skills/harness/scripts/harness-engine.sh` is also valid.
+If not found, try `find ~/.claude/skills -path "*/harness/scripts/harness-engine.sh"` or `find ~/.codex/skills -path "*/harness/scripts/harness-engine.sh"` as fallback. In a checked-out repo, `plugins/harness-engineering-skills/skills/harness/scripts/harness-engine.sh` is also valid.
 
 Delegate ALL file-system and git bookkeeping to the engine.
 
