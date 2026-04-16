@@ -5,7 +5,7 @@
     "url": "https://github.com/stone16"
   },
   "metadata": {
-    "description": "Cross-LLM iterative code review plugin for Claude Code",
+    "description": "Stometa's public curated Claude Code skillset — a small, opinionated set of engineering skills (review-loop, harness) published as one plugin, extracted periodically from the private stometa-skillset.",
     "version": "1.0.0"
   },
   "plugins": [
