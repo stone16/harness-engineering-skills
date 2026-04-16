@@ -43,6 +43,17 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# --- Step 0.1b: Validate peer against the allowlist shipped by the skill ---
+# peer-invoke.sh only supports codex and gemini; reject anything else here
+# so we don't create a session / checkpoint commit for an unsupported peer.
+case "$PEER" in
+  codex|gemini) ;;
+  *)
+    echo "Error: Unsupported peer '$PEER'. Supported: codex, gemini." >&2
+    exit 1
+    ;;
+esac
+
 # --- Step 0.2: Check peer CLI ---
 if ! command -v "$PEER" &>/dev/null; then
   # Try alternative
