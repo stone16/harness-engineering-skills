@@ -1,5 +1,5 @@
 {
-  "name": "stometa",
+  "name": "harness-engineering-skills",
   "version": "1.0.0",
   "description": "Cross-LLM iterative code review loop. Spawns Codex or Gemini as peer reviewer, iterates until both agents reach consensus on code quality.",
   "author": {

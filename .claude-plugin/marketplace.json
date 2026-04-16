@@ -1,18 +1,19 @@
 {
-  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "claude-review-loop",
-  "version": "1.0.0",
-  "description": "Cross-LLM iterative code review plugin for Claude Code",
+  "name": "stometa",
   "owner": {
     "name": "stometa",
     "url": "https://github.com/stone16"
   },
+  "metadata": {
+    "description": "Cross-LLM iterative code review plugin for Claude Code",
+    "version": "1.0.0"
+  },
   "plugins": [
     {
-      "name": "stometa",
+      "name": "harness-engineering-skills",
       "description": "Cross-LLM iterative code review loop. Spawns Codex or Gemini as peer reviewer, loops until consensus.",
       "version": "1.0.0",
-      "source": "./",
+      "source": "./plugins/harness-engineering-skills",
       "category": "code-quality"
     }
   ]
