@@ -1,38 +1,39 @@
-# claude-review-loop
+# harness-engineering-skills
 
-> Cross-LLM iterative code review plugin for Claude Code.
+> Stometa's public curated Claude Code skillset — a small, opinionated set of engineering skills published as one Claude Code plugin, extracted periodically from the private `stometa-skillset`.
 
-## What it does
+## What this repo is
 
-This Claude Code plugin spawns a peer reviewer (OpenAI Codex CLI or Google Gemini CLI) to independently review your code changes. Claude Code evaluates the peer's findings, implements accepted fixes, and re-submits for re-review. The loop iterates until both AI agents reach consensus on code quality.
+This repository is the public publication surface for selected skills from Stometa's private `stometa-skillset`. The first batch ships a single Claude Code plugin, `harness-engineering-skills`, containing two skills: `review-loop` and `harness`. Future batches will add more skills as they stabilize internally.
 
-## Key features
+## Skills in this release
 
-- Fully autonomous — no human participation needed during the loop
-- Cross-LLM diversity — catches blind spots that single-model review misses
-- Iterative convergence — findings are debated, not just listed
-- Structured output — JSON logs + markdown summary per session
-- Auto-detects review scope — local diff, branch commits, PR, or specific commit
+- **review-loop** — Cross-LLM iterative code review. Spawns a peer reviewer (Codex CLI or Gemini CLI), evaluates its findings, implements accepted fixes, and re-submits until both sides converge. Runs autonomously; humans watch via `.review-loop/<session>/summary.md`. Install: `claude plugin install harness-engineering-skills@stometa` then invoke `/review-loop` inside Claude Code.
+- **harness** — Cybernetics-based multi-agent orchestration for complex tasks. Runs a Planner → Generator → Evaluator → Retro pipeline with fresh sub-agents per checkpoint to prevent drift, and persistent retro learning across tasks. Recommended flow: Claude Code plans the spec (Session 1); Codex executes autonomously (Session 2); the bundled `review-loop` skill (Codex or Gemini CLI as peer) provides the cross-model quality gate before PR. Install: same plugin as above; invoke `harness plan <task-id>`.
 
-## Installation
+## Install
 
 ```
-claude plugin marketplace add stone16/claude-review-loop
-claude plugin install stometa@claude-review-loop
-```
-
-## Usage
-
-```
-/stometa:review-loop
+claude plugin marketplace add https://github.com/stone16/harness-engineering-skills
+claude plugin install harness-engineering-skills@stometa
 ```
 
 ## Prerequisites
 
-- Claude Code CLI
-- Codex CLI (`npm i -g @openai/codex`) or Gemini CLI
-- Git
+- Required: `git`, `python3`, Claude Code with the `superpowers` plugin.
+- Peer reviewer (one of): `codex` CLI or `gemini` CLI — only needed when using `review-loop` or `harness`'s cross-model review gate.
+- Optional: `gh` CLI for PR-scoped review detection.
 
-## License
+## Positioning notes
 
-Apache-2.0
+- This repo is not "claude-review-loop" anymore; `review-loop` is now one skill of several. The repo name is `harness-engineering-skills`.
+- The marketplace name is `stometa`; the plugin name is `harness-engineering-skills`; together they become `harness-engineering-skills@stometa`.
+- License: Apache-2.0.
+
+## Links
+
+- [README (English)](README.md)
+- [README (中文)](README.zh-CN.md)
+- [LICENSE](LICENSE)
+- GitHub: https://github.com/stone16/harness-engineering-skills
+- Private origin (for context, not public): Stometa's `stometa-skillset`.

@@ -1,0 +1,11 @@
+{
+  "max_spec_rounds": 3,
+  "max_eval_rounds": 3,
+  "cross_model_review": true,
+  "cross_model_peer": "codex",
+  "cross_model_read_only": false,
+  "auto_retro": true,
+  "skip_full_verify": true,
+  "coverage_threshold": 0,
+  "notes": "This repo is a packaging/documentation project — no runtime test suite. skip_full_verify=true and coverage_threshold=0 are intentional overrides. Structural verification is done via shell-based acceptance criteria per checkpoint and a smoke-test E2E phase."
+}
