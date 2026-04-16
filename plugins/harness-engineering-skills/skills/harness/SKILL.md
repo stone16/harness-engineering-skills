@@ -7,7 +7,7 @@ description: |
   per-checkpoint drift prevention, and persistent retro learning.
 
   Recommended workflow: Claude Code plans the spec (Session 1), Codex executes
-  autonomously (Session 2), Claude CLI reviews as cross-model peer.
+  autonomously (Session 2), Gemini reviews as cross-model peer via `review-loop`.
 
   Use when: "harness this task", "use harness", "orchestrate this",
   "harness plan", "harness continue", "harness execute <task-id>",
@@ -25,11 +25,11 @@ Fresh sub-agents per checkpoint prevent drift. Retro accumulates learning across
 Session 1 (Claude Code) → Plan + Spec → Spec review with cross-model evaluator
     ↓ spec approved
 Session 2 (Codex)       → Execute checkpoints → Evaluate → E2E → Full-verify → PR → Retro
-    ↕ Claude CLI as review-loop peer (cross-model quality gate)
+    ↕ Gemini CLI as review-loop peer (cross-model quality gate)
 ```
 
 - **Session 1**: Claude Code for interactive discovery — brainstorming, multi-turn Q&A, spec refinement with Spec Evaluator.
-- **Session 2**: Codex for autonomous execution — implementation, evaluation, PR creation, retro. Claude CLI serves as cross-model reviewer via `review-loop`.
+- **Session 2**: Codex for autonomous execution — implementation, evaluation, PR creation, retro. A second peer CLI (Codex or Gemini, matching the `review-loop` skill's supported peers) serves as cross-model reviewer via `review-loop`.
 - Both hosts support both phases. The above is the **recommended** flow, not a hard constraint.
 
 ## Prerequisites
@@ -38,7 +38,7 @@ Session 2 (Codex)       → Execute checkpoints → Evaluate → E2E → Full-ve
 2. Reviewer role definitions: `harness-spec-evaluator.md`, `harness-generator.md`, `harness-evaluator.md`, `harness-retro.md` — ship with this plugin at `plugins/harness-engineering-skills/agents/`; user overrides may live at `~/.claude/agents/harness-*.md`
 3. `python3` on PATH (engine JSON operations)
 4. `git` repository initialized
-5. For Codex-hosted execution: `claude` CLI on PATH for sub-agent dispatch and review-loop
+5. For Codex-hosted execution: `claude` CLI on PATH for sub-agent dispatch (reviewer roles). The `review-loop` peer is a separate choice (`codex` or `gemini`) — see the `review-loop` skill.
 
 Verify (Claude Code): `claude plugin list | grep superpowers`
 Verify (review roles): `ls ~/.claude/plugins/**/plugins/harness-engineering-skills/agents/harness-*.md 2>/dev/null || ls plugins/harness-engineering-skills/agents/harness-*.md` (plugin-bundled) and `ls ~/.claude/agents/harness-*.md 2>/dev/null` (optional user override)

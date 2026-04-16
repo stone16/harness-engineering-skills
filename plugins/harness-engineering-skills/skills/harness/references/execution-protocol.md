@@ -316,8 +316,8 @@ When Generator encounters conflicting rules:
 | Dependency | Used By | Purpose |
 |-----------|---------|---------|
 | `superpowers` plugin | Generator, Orchestrator | TDD (preloaded), verification-before-completion, systematic-debugging, brainstorming in Claude Code |
-| `sto` plugin (this skill) | Orchestrator | `review-loop` in Claude Code |
-| `claude` CLI | Codex-hosted Orchestrator | Sub-agent roles + optional `review-loop --peer claude` |
+| bundled `review-loop` skill | Orchestrator | Cross-model peer review step (supports peers: codex, gemini) |
+| `claude` CLI | Codex-hosted Orchestrator | Sub-agent role dispatch for Spec Evaluator / Evaluator / Retro (not a `review-loop` peer — review-loop supports codex and gemini) |
 
 **Optional (enhanced capabilities):**
 

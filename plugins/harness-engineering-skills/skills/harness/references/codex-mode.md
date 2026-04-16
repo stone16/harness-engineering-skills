@@ -7,7 +7,7 @@ Use this reference when Codex is the orchestrator. The pipeline (Planning → Ch
 - Codex acts as the Orchestrator and local implementer (Generator role within checkpoints).
 - `harness-engine.sh` remains the single source of truth for task state, checkpoints, and phase gates — same engine, same commands, same phase machine.
 - Sub-agent roles (Spec Evaluator, Evaluator, Retro) are dispatched via `claude-agent-invoke.sh` to a Claude CLI process. Any CLI that accepts a prompt and returns structured output can fill these roles.
-- `review-loop` can use any available peer (`codex`, `claude`, or `gemini`) — the choice is a config option, not an architectural constraint.
+- `review-loop` uses a peer reviewer configured via its own skill (`codex` or `gemini`) — the choice is a config option, not an architectural constraint.
 
 > **Symmetry**: The role assignments are interchangeable. Just as Codex can host with Claude sub-agents, Claude Code can host with Codex as the review-loop peer. This document covers the Codex-as-host configuration.
 
@@ -78,16 +78,13 @@ For each checkpoint:
 
 ## Cross-Model Review
 
-After E2E passes, `review-loop` provides the cross-model quality gate. Configure it with any available peer:
+After E2E passes, `review-loop` provides the cross-model quality gate. Configure it with a peer supported by the bundled `review-loop` skill:
 
-- `peer_reviewer=claude` — Claude reviews Codex's implementation
-- `peer_reviewer=codex` — a second Codex instance reviews (same-model, still useful for fresh context)
-- `peer_reviewer=gemini` — Gemini reviews
+- `peer_reviewer=codex` — a second Codex instance reviews (fresh context in a clean process)
+- `peer_reviewer=gemini` — Gemini reviews (true cross-model when Codex hosts)
 
-Options:
-- `read_only=false` — normal fix loop (peer finds issues, host fixes, iterate)
-- `read_only=true` — report-only (collect signal without code changes)
+`review-loop` always runs as an iterative fix loop (peer finds issues, host fixes, iterate to consensus). There is no read-only mode in the bundled skill.
 
-`pass-review-loop` now treats `.review-loop/latest/rounds.json` as a completion contract: `session.status` must be `consensus` or `read_only_complete`, and `session.total_rounds` must be at least 1.
+`pass-review-loop` treats `.review-loop/latest/rounds.json` as a completion contract: `session.status` must be `consensus` or `read_only_complete`, and `session.total_rounds` must be at least 1.
 
 This is the same review-loop step that the Claude Code-hosted path runs. The peer choice is orthogonal to who hosts.
