@@ -9,7 +9,7 @@ This repository is the public publication surface for selected skills from Stome
 ## Skills in this release
 
 - **review-loop** — Cross-LLM iterative code review. Spawns a peer reviewer (Codex CLI or Gemini CLI), evaluates its findings, implements accepted fixes, and re-submits until both sides converge. Runs autonomously; humans watch via `.review-loop/<session>/summary.md`. Install: `claude plugin install harness-engineering-skills@stometa` then invoke `/review-loop` inside Claude Code.
-- **harness** — Cybernetics-based multi-agent orchestration for complex tasks. Runs a Planner → Generator → Evaluator → Retro pipeline with fresh sub-agents per checkpoint to prevent drift, and persistent retro learning across tasks. Recommended flow: Claude Code plans the spec (Session 1); Codex executes autonomously (Session 2); Claude CLI acts as the cross-model reviewer. Install: same plugin as above; invoke `harness plan <task-id>`.
+- **harness** — Cybernetics-based multi-agent orchestration for complex tasks. Runs a Planner → Generator → Evaluator → Retro pipeline with fresh sub-agents per checkpoint to prevent drift, and persistent retro learning across tasks. Recommended flow: Claude Code plans the spec (Session 1); Codex executes autonomously (Session 2); the bundled `review-loop` skill (Codex or Gemini CLI as peer) provides the cross-model quality gate before PR. Install: same plugin as above; invoke `harness plan <task-id>`.
 
 ## Install
 
