@@ -78,10 +78,10 @@ For each checkpoint:
 
 ## Cross-Model Review
 
-After E2E passes, `review-loop` provides the cross-model quality gate. Configure it with a peer supported by the bundled `review-loop` skill:
+After E2E passes, `review-loop` provides the cross-model quality gate. Set `cross_model_peer` in `.harness/config.json` (or pass `--cross-model-peer <name>` to the engine) to pick a peer supported by the bundled `review-loop` skill:
 
-- `peer_reviewer=codex` — a second Codex instance reviews (fresh context in a clean process)
-- `peer_reviewer=gemini` — Gemini reviews (true cross-model when Codex hosts)
+- `cross_model_peer=codex` — a second Codex instance reviews (fresh context in a clean process)
+- `cross_model_peer=gemini` — Gemini reviews (true cross-model when Codex hosts)
 
 `review-loop` always runs as an iterative fix loop (peer finds issues, host fixes, iterate to consensus). There is no read-only mode in the bundled skill.
 
