@@ -2,22 +2,55 @@
 
 # Harness 工程化技能集
 
-Stometa 对外公开的 Claude Code 精选技能集 —— 一套我们自己每天在用、并按批次对外发布的小而克制的技能。
+> **让 AI Agent 连续无人值守写代码几个小时，最后产出能直接 merge 的 PR。**
+>
+> 大多数自主编码回路撑不过第一个小时：上下文越积越乱，模型开始顺着自己说话，"PASS" 也不再是 PASS。**Harness** 把 Claude Code、Codex、Gemini 编织进一套带反馈控制的运行时：闸门由引擎而不是 LLM 把守，每个 checkpoint 都跑在全新的 Agent 上，每个 PR 上线之前必须由不同厂商的 peer 过一遍。
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Claude Code](https://img.shields.io/badge/Claude_Code-Plugin-blueviolet)](https://claude.ai/claude-code)
 [![Peer: Codex](https://img.shields.io/badge/peer-Codex_CLI-74aa9c)](https://github.com/openai/codex)
 [![Peer: Gemini](https://img.shields.io/badge/peer-Gemini_CLI-4285F4)](https://github.com/google-gemini/gemini-cli)
 
-## 这个仓库是什么
+## 你大概也踩过这些坑
 
-本仓库是 Stometa 私有仓库 `stometa-skillset` 的**公开**伴随版本。我们在内部使用一套更大的技能集；经过打磨验证的技能会被挑选出来，定期以批次的形式发布到这里。目标是把真正能扛住日常工程工作的工作流分享出来，而不是堆砌一堆原型。
+如果你在真实项目里跑过自主编码 Agent，下面这些场景应该都不陌生：
 
-第一批发布两个技能：`review-loop`（日常已经在用）和 `harness`（面向复杂任务的多智能体编排）。两者作为同一个 Claude Code 插件安装。
+- **Agent 很快就开始漂移。** 第 1 小时一切顺利，第 4 小时它已经开始反复推翻自己的决定、瞎编不存在的文件名、写出和自己上文互相矛盾的代码。
+- **"PASS" 根本不等于 PASS。** 让写代码的同一个模型再来给自己的代码打分，得到的分根本不可信：测试被悄悄跳过，覆盖率默默掉下去，模型却信誓旦旦地说"一切正常"。
+- **同厂商互评就是回音壁。** 让 Claude 评审 Claude 写的代码，根本抓不住 Claude 自己的盲点；Codex 评审 Codex 也是同样的问题。
+- **每个新任务都从零开始。** 昨天踩过的坑，今天的 Agent 完全不知道。同样的错每周犯一遍。
+- **"自主"还是离不开人盯着。** 起身倒杯咖啡的工夫回来，Agent 要么卡在死循环里，要么正在"优化"一些你根本没让它动的东西。
+
+多智能体框架号称能解决这些。大多数只能跑出 demo。
+
+## Harness 到底做了什么
+
+Harness 是一个 Claude Code 插件（同时也能在 Codex CLI 里跑），它把自主编码 Agent 包裹在一套控制论反馈环里。五个机制各管一道防线 —— 一一对应上面那些痛点：
+
+1. **闸门由引擎把守，不是 LLM。** 一个不大的 Bash 引擎（`harness-engine.sh`）在磁盘上记录状态，盘上产物没拿到正确裁决，阶段机就不放行。LLM 没办法给自己盖章 —— 只要 `evaluation.md` 不是 `verdict: PASS`，`pass-checkpoint` 就直接报错把流水线掐断。
+2. **每个 checkpoint 都换全新上下文。** 每个 checkpoint 都会拉起一个全新的子 Agent 同时担任 Generator（写代码）和 Evaluator（判代码）。漂移没法跨 checkpoint 累积，因为上下文是物理重置的。引擎甚至会校验 evaluator 的 session id 没有被任何历史 checkpoint 用过，防止你拿过期的 evaluator 假装通过。
+3. **规划和执行强制拆成两个会话。** 规划在一个进程里，执行在另一个进程里。执行会话从来看不到规划阶段的对话，所以它没办法靠"反正规划阶段说这样就行"来糊弄自己的评估。
+4. **每个 PR 上线之前都要跨厂商 peer review。** 任务收尾时，另一家厂商的 CLI（`codex` 或 `gemini`）会读 diff 并给出结构化 finding。宿主 LLM 反驳、修改、重交，直到双方达成 `CONSENSUS`。然后**再开一个全新会话**做终审，避免最终裁决被前面来回讨论的对话偏置。
+5. **跨任务的记忆。** 每个任务结束都会写一份 retro 提交进 `.harness/retro/`。错误模式会沉淀，规则改进提案会被起草。整个系统会真正越用越聪明 —— 这是这套设计里**唯一**不被"上下文丢弃"原则覆盖的状态，是有意为之。
+
+另外还附带一个 `phase-guard` PreToolUse hook：当 harness 任务还没走到 `pr` 阶段你就想 `git push` 或 `gh pr create` 时，它会出来提醒你（只是建议性提示，不会硬拦），算是给"人在回路"留的一道软安全网。
+
+最终效果：Agent 可以无人值守跑几个小时（我们日常会跑跨多个会话、累计 10 小时以上 Agent 时间的任务），每一次 PASS 都是真的 PASS，最终落到代码库的那个 PR，是高级工程师不会要求重写就能批的那种。
+
+## 包里都装了什么
+
+| 组件 | 是什么 |
+|---|---|
+| **Skill: `harness`** | 基于控制论的 Planner → Generator → Evaluator → Retro 编排。引擎 + 阶段机 + 4 份协议参考文档。 |
+| **Skill: `review-loop`** | 跨 LLM 的迭代式代码审查。自动识别审查范围（本地 diff / 分支 / PR / 指定 commit），拉起 peer（Codex 或 Gemini）一直迭代到 `CONSENSUS`。可独立使用，不依赖 harness。 |
+| **4 个子 Agent** | `harness-spec-evaluator`、`harness-generator`、`harness-evaluator`、`harness-retro` —— 引擎按阶段调度的全新上下文 Claude 子 Agent。 |
+| **`harness-engine.sh`** | Bash 引擎：状态全部落盘（`.harness/<task>/`、`git-state.json`），独占阶段机，硬闸门（`pass-checkpoint`、`pass-e2e`、`pass-review-loop`、`pass-full-verify`、`pass-pr`）。 |
+| **`phase-guard.mjs`** | 可选的 Claude Code hook：在 harness 任务还没走完时，如果你尝试 `git push` 或 `gh pr create`，它会出来提醒。 |
+| **`preflight.sh` + `peer-invoke.sh`** | review-loop 的脚本：识别审查范围、用隔离的 `CODEX_HOME` 启动 peer CLI 并剥离继承的凭证。 |
 
 ## 工作流总览
 
-`harness` 是一套受控制论（cybernetics）启发的编排器：**规划与执行被强制拆到两个会话**，上下文不会串味；**每个 checkpoint 都用全新的子智能体**重置 eigenbehavior；一个**引擎脚本**独占状态并强制硬闸门，LLM 无法自我盖章；产 PR 之前必须经过一次**跨模型同行评审**（不同厂商的 CLI），不会基于单模型意见就合入。每次任务的复盘会持久化下来反哺后续任务 —— 这就是这套控制论系统的闭环。
+下面这张图是你说一句 `harness plan <task-id>` 之后实际会跑的全部环节。橙色描边的节点是**全新子 Agent 形成的"防漂移防火墙"**；绿色描边的节点是 LLM 无法绕开的**引擎硬闸门**。
 
 ```mermaid
 flowchart TB
@@ -89,8 +122,6 @@ flowchart TB
     class ENG,RL,FV gate;
 ```
 
-**图例** —— 橙色描边的节点是**全新子智能体**形成的"防漂移防火墙"；绿色描边的节点是 LLM 无法绕开的**引擎硬闸门**。
-
 ### 角色与宿主对照
 
 每个角色由谁来扮演，与会话宿主是哪个 LLM 解耦 —— 这正是同一套流水线在 Claude Code 起手和在 Codex 起手都能跑通的原因。
@@ -115,16 +146,6 @@ flowchart TB
 | **黑盒状态** | 状态隐式藏在聊天上下文里 | 全部状态落盘（`.harness/<task-id>/`、`git-state.json`），单一引擎脚本掌管阶段机，每次状态迁移都可审计 |
 | **任务间无记忆** | 每个任务从零开始 | 持久化的 `.harness/retro/`（纳入 git）累积错误模式、规则提案、技能缺陷 —— 闭合控制论反馈环 |
 | **工具锁定** | 强绑定单一 CLI / 单一厂商 | 编排宿主和评审 peer 各自可换；同一套引擎和闸门在 Claude Code 与 Codex 上都能跑 |
-
-## 技能清单
-
-### `review-loop`
-
-跨 LLM 的迭代式代码审查。调用一个同行审查者（Codex CLI 或 Gemini CLI）独立审查你的改动，Claude 评估对方的发现，采纳后实现修复并重新提交审查，直到双方对最终代码状态达成一致。审查过程不需要你参与，可以通过 `.review-loop/<session>/summary.md` 查看进展。
-
-### `harness`
-
-面向复杂任务的、基于控制论（cybernetics）的多智能体编排。它把任务驱动成一条 **Planner → Generator → Evaluator → Retro** 流水线，每个 checkpoint 使用全新的子智能体（防漂移），并跨任务持续沉淀复盘经验。推荐流程：Session 1 用 Claude Code 规划 spec，Session 2 用 Codex 自主执行，然后通过 `review-loop`（Codex 或 Gemini CLI 作为 peer）完成发 PR 前的跨模型质量门禁。
 
 ## 安装
 

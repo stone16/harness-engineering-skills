@@ -2,22 +2,55 @@
 
 # Harness Engineering Skills
 
-Stometa's public curated Claude Code skillset — a small, opinionated set of skills we use ourselves, published periodically.
+> **Let an AI agent code for hours unattended — and ship PRs you'd actually merge.**
+>
+> Most autonomous coding loops drift after the first hour: context bloats, the model starts agreeing with itself, and "PASS" stops meaning anything. **Harness** turns Claude Code, Codex, and Gemini into a feedback-controlled runtime where the engine — not the LLM — owns the gates, every checkpoint runs against a fresh agent, and a different-vendor peer reviews before any PR opens.
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Claude Code](https://img.shields.io/badge/Claude_Code-Plugin-blueviolet)](https://claude.ai/claude-code)
 [![Peer: Codex](https://img.shields.io/badge/peer-Codex_CLI-74aa9c)](https://github.com/openai/codex)
 [![Peer: Gemini](https://img.shields.io/badge/peer-Gemini_CLI-4285F4)](https://github.com/google-gemini/gemini-cli)
 
-## Why this repo
+## The pain you've probably felt
 
-This is the **public** companion to Stometa's private `stometa-skillset`. We dogfood a larger internal skillset day-to-day; selected skills are extracted, polished, and published here in batches. The goal is to share the workflows that actually hold up under real engineering work — not a pile of prototypes.
+If you've actually tried autonomous coding agents on real work, you know how it ends:
 
-The first batch ships two skills: `review-loop` (already proven in daily use) and `harness` (multi-agent orchestration for larger tasks). Both are installable as a single Claude Code plugin.
+- **Drift sets in fast.** Hour 1 is great. By hour 4 the agent is relitigating decisions, hallucinating filenames, and writing code that contradicts what it wrote earlier in the same session.
+- **"PASS" doesn't mean PASS.** When the same model that wrote the code also grades the code, you can't trust the grade. Tests get silently skipped, coverage drops, and the model insists everything works.
+- **Same-vendor review is an echo chamber.** Asking Claude to review Claude won't catch what Claude tends to miss. Same for Codex reviewing Codex.
+- **Every task starts cold.** Lessons from yesterday's task vanish before today's task begins. Same mistakes, same week, every week.
+- **"Autonomous" still needs babysitting.** Step away to make coffee, come back to find the agent stuck in a loop — or busy "improving" something you didn't ask for.
+
+Multi-agent frameworks promise to fix all of this. Most ship demos.
+
+## What Harness actually does
+
+Harness is a Claude Code plugin (also runs inside Codex CLI) that wraps autonomous coding agents in a cybernetic feedback loop. Five mechanisms work together — each closes one of the failure modes above:
+
+1. **The engine owns the gates, not the LLM.** A small Bash engine (`harness-engine.sh`) tracks state on disk and refuses to advance the phase machine unless the artifact on disk has the correct verdict. The LLM cannot self-certify a PASS — if `evaluation.md` doesn't say `verdict: PASS`, `pass-checkpoint` returns an error and the pipeline halts.
+2. **Fresh context per checkpoint.** Each checkpoint spawns a brand-new sub-agent for both the Generator (writes the code) and the Evaluator (judges it). Drift cannot accumulate across checkpoints because the context literally resets. The engine even verifies that the evaluator's session id was never used by a prior checkpoint, so you can't reuse a stale evaluator to fake a pass.
+3. **Plan and execute in separate sessions.** Planning lives in one process; execution lives in another. The execution session never sees the planning conversation, so it can't shortcut its own evaluation by remembering "well, the plan said this should work."
+4. **Cross-vendor peer review before every PR.** When the task is otherwise done, a different vendor's CLI (`codex` or `gemini`) reads the diff and files structured findings. The host LLM debates back, makes the accepted fixes, re-submits — until both sides reach `CONSENSUS`. Then a *fresh* peer session does a final approval pass so the closing verdict isn't biased by the iterative repair conversation.
+5. **Memory across tasks.** Every completed task ends with a retrospective committed to `.harness/retro/`. Error patterns accumulate. Rule proposals get drafted. The system genuinely learns over time — the only piece of state that ISN'T context-discarded, by design.
+
+A bundled `phase-guard` PreToolUse hook also nudges you (advisory, doesn't hard-block) if you try to `git push` or `gh pr create` before the harness phase machine has reached `pr` — a soft safety net for the human in the loop.
+
+The result: the agent runs unattended for hours (we routinely ship tasks that span 10+ hours of agent time across multiple sessions), every PASS is real, and the PR that lands at the end is one a senior engineer would approve without a rewrite.
+
+## What's in the box
+
+| Component | What it is |
+|---|---|
+| **Skill: `harness`** | Cybernetics-based Planner → Generator → Evaluator → Retro orchestration. Engine + phase machine + 4 reference protocols. |
+| **Skill: `review-loop`** | Cross-LLM iterative code review. Auto-detects scope (local diff / branch / PR / specific commit), spawns peer (Codex or Gemini), iterates until `CONSENSUS`. Usable standalone — does not require the harness skill. |
+| **4 sub-agents** | `harness-spec-evaluator`, `harness-generator`, `harness-evaluator`, `harness-retro` — fresh-context Claude sub-agents the engine dispatches per phase. |
+| **`harness-engine.sh`** | Bash engine: state on disk (`.harness/<task>/`, `git-state.json`), phase machine, hard gates (`pass-checkpoint`, `pass-e2e`, `pass-review-loop`, `pass-full-verify`, `pass-pr`). |
+| **`phase-guard.mjs`** | Optional Claude Code hook that warns on premature `git push` / `gh pr create` while a harness task is mid-flight. |
+| **`preflight.sh` + `peer-invoke.sh`** | Review-loop scripts: scope detection, peer CLI launch with isolated `CODEX_HOME` and stripped credentials. |
 
 ## Workflow at a glance
 
-`harness` is a cybernetics-inspired orchestrator: planning and execution live in **separate sessions** so context cannot leak; every checkpoint runs against a **fresh sub-agent** to reset eigenbehavior; an **engine script** owns state and enforces hard gates so the LLM cannot self-certify; and a **cross-model peer** (a different vendor's CLI) reviews before PR so you never merge on a single model's opinion. Persistent retro feeds learnings back into future tasks — that's the closing loop of the cybernetic system.
+Here's what runs when you say `harness plan <task-id>`. Orange-bordered nodes are **fresh-sub-agent drift firewalls**; green-bordered nodes are **engine-enforced gates** the LLM cannot bypass.
 
 ```mermaid
 flowchart TB
@@ -89,8 +122,6 @@ flowchart TB
     class ENG,RL,FV gate;
 ```
 
-**Legend** — orange-bordered nodes are the **fresh-sub-agent** drift firewalls; green-bordered nodes are the **engine-enforced gates** that the LLM cannot bypass.
-
 ### Hosts and roles
 
 The model running each role is decoupled from the model hosting the session — that's why the same pipeline works whether you start in Claude Code or Codex.
@@ -115,16 +146,6 @@ The model running each role is decoupled from the model hosting the session — 
 | **Black-box state** | State implicit in chat history | All state on disk (`.harness/<task-id>/`, `git-state.json`), one engine script owns the phase machine, every transition is auditable |
 | **No memory across tasks** | Each task starts cold | Persistent `.harness/retro/` (git-tracked) accumulates error patterns, rule proposals, and skill defects — closes the cybernetic feedback loop |
 | **Tool-use bias** | Lock-in to one CLI / one vendor | Orchestrator host and review peer are independently swappable; the same engine and gates run on Claude Code or Codex |
-
-## Skills
-
-### `review-loop`
-
-Cross-LLM iterative code review. Spawns a peer reviewer (Codex CLI or Gemini CLI) to independently review your changes. Claude evaluates the peer's findings, implements accepted fixes, and re-submits until both sides agree on the final code state. The human doesn't need to participate — watch progress via `.review-loop/<session>/summary.md`.
-
-### `harness`
-
-Cybernetics-based multi-agent orchestration for complex tasks. Coordinates a **Planner → Generator → Evaluator → Retro** pipeline with fresh sub-agents per checkpoint (drift prevention) and persistent retro learning across tasks. Recommended flow: Claude Code plans the spec (Session 1), Codex executes autonomously (Session 2), and `review-loop` (Codex or Gemini CLI as peer) provides the cross-model quality gate before PR.
 
 ## Install
 
