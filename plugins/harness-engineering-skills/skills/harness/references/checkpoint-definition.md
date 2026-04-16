@@ -1,0 +1,222 @@
+# Checkpoint Definition Spec
+
+Defines what a checkpoint is, how the Planner should write them, and how they behave during execution.
+
+---
+
+## What Is a Checkpoint
+
+A checkpoint is the smallest execution unit of the Harness pipeline. Each checkpoint:
+
+- Is implemented by a fresh Generator agent independently
+- Is verified by a fresh Evaluator agent independently
+- Produces testable, verifiable results
+- Uses sequential flat numbering (01, 02, 03...)
+
+---
+
+## Numbering Rules
+
+- **Format**: two-digit, zero-padded (01, 02, ..., 99)
+- **Strictly incrementing**, no gaps
+- **No letter suffixes** (~~03A~~, ~~03B~~)
+- **No nested levels** (~~03.1~~, ~~03.2~~)
+
+---
+
+## Granularity Standards
+
+A checkpoint should be completable by a Generator in **one pass** and verifiable by an Evaluator with clear evidence.
+
+### Three Dimensions
+
+| Dimension | Suitable | Too Large | Too Small |
+|-----------|----------|-----------|-----------|
+| Change volume (insertions) | 50–200 lines | >300 lines | <10 lines |
+| File count | 1–8 files | >12 files | — |
+| Verification complexity | 1–3 Tier 1 checks | Multiple independent features | No verifiable output |
+
+These are guideline ranges, not hard constraints. A checkpoint modifying 2 files with complex algorithms may be harder than a mechanical checkpoint modifying 10 files. The Planner should judge holistically.
+
+### Split Signals (too large — should split)
+
+- Objective contains "and" — "create hook **and** apply to all screens" → split into two
+- Files span multiple concerns — hook implementation + screen modification + style adjustment → split by concern
+- Spec Evaluator marks `Granularity: TOO_LARGE`
+
+### Merge Signals (too small — should merge)
+
+- Change does not produce independently verifiable results — "create an empty file" is not a valid checkpoint
+- Two checkpoints modify the same function in the same file → merge
+- Spec Evaluator marks `Granularity: TOO_SMALL`
+
+---
+
+## Scope and Objective Constraint
+
+The `Scope` field is the checkpoint's **objective statement, not a file list**.
+
+Generator's scope constraint binds to Scope. The judgment rule:
+
+> **If removing a modification does not affect achievement of the Scope objective → that modification should not exist.**
+
+This means:
+
+- Generator **may** modify files outside "Files of interest" if necessary to achieve the objective
+- Generator **may** create new files if necessary to achieve the objective
+- Generator **must not** make improvements, refactoring, or optimizations unrelated to the objective — document these in output-summary.md under "Recommended Follow-up"
+
+---
+
+## Effort Estimate
+
+Measured in **insertions only** (lines added in `git diff`, the `+` lines). Does not include deletions.
+
+| Estimate | Expected Insertions | Expected Files | Magnitude Warning (3×) |
+|----------|--------------------:|---------------:|----------------------:|
+| S | ~50 lines | 1–3 | >150 lines or >9 files |
+| M | ~150 lines | 4–8 | >450 lines or >24 files |
+| L | ~300 lines | 8–12 | >900 lines or >36 files |
+
+When actual changes exceed the 3× threshold, the Evaluator triggers REVIEW (not FAIL) with focus on whether modifications are goal-relevant.
+
+---
+
+## Acceptance Criteria Quality Standards
+
+Each criterion must be verifiable through concrete evidence.
+
+### Good Criteria (specific, testable)
+
+```
+- [ ] useScreenPadding() returns { paddingHorizontal: number }
+- [ ] post-detail.tsx applies padding via inline style
+- [ ] tsc --noEmit passes with zero errors
+- [ ] existing jest tests pass (npm test)
+```
+
+### Bad Criteria (vague, untestable)
+
+```
+- [ ] Code is clean and well-structured        ← subjective
+- [ ] Padding works correctly                   ← "correctly" undefined
+- [ ] Performance is acceptable                 ← no metric
+- [ ] All edge cases are handled                ← which edge cases?
+```
+
+### Testing Criteria (Mandatory, by Type)
+
+Every checkpoint MUST include at least one testability criterion. Strategy differs by type:
+
+**`Type: backend` / `Type: infrastructure`** — TDD + coverage:
+```
+- [ ] Tests pass with coverage ≥ `.harness/config.json` `coverage_threshold` (default 85%) or stricter spec value
+- [ ] Integration test covers [API endpoint / data path]
+- [ ] Red commit (failing tests) exists before Green commit (passing implementation)
+```
+
+**`Type: frontend`** — E2E interaction + visual proof (unit coverage NOT required):
+```
+- [ ] E2E test verifies [click flow / navigation / form submission]
+- [ ] Screenshot: [specific screen/state] renders correctly
+- [ ] Zero console errors in browser
+```
+
+**`Type: fullstack`** — both strategies applied to respective portions:
+```
+- [ ] Backend: tests pass with coverage ≥ `.harness/config.json` `coverage_threshold` (default 85%) or stricter spec value
+- [ ] Frontend: E2E test verifies [user flow]
+- [ ] Frontend: screenshot of [key state] renders correctly
+```
+
+### Quantity Guidance
+
+- **3–6 criteria per checkpoint** (at least 1 must be a test criterion)
+- Fewer than 3 → may miss verification points
+- More than 6 → checkpoint may be too large, consider splitting
+
+---
+
+## Dependency Rules
+
+- Checkpoints execute **sequentially** — CP(N) can assume CP(1) through CP(N-1) are complete
+- `Depends on` declares data dependencies (e.g., "CP03 uses the hook created in CP01") — used by E2E agent for data-flow tracing
+- Execution order is always linear regardless of dependency structure
+- If two checkpoints are completely independent, order does not matter, but numbering still increments
+
+---
+
+## Checkpoint Format (in spec.md)
+
+```markdown
+### Checkpoint 03: Apply padding hook to index and post-detail screens
+
+- **Scope**: Import useScreenPadding and apply to 2 community screens
+- **Depends on**: CP01 (hook creation)
+- **Type**: frontend
+- **Acceptance criteria**:
+  - [ ] index.tsx calls useScreenPadding() and applies returned padding
+  - [ ] post-detail.tsx calls useScreenPadding() and applies returned padding
+  - [ ] E2E: navigate to community index → padding visually applied
+  - [ ] Screenshot: community index and post-detail screens with padding applied
+  - [ ] Zero console errors in browser during navigation
+  - [ ] No TypeScript errors introduced (tsc --noEmit)
+- **Files of interest**: src/screens/community/index.tsx, src/screens/community/post-detail.tsx
+- **Effort estimate**: S
+```
+
+### Field Reference
+
+| Field | Required | Purpose |
+|-------|:--------:|---------|
+| Scope | Yes | Objective statement — Generator's scope constraint binds here |
+| Depends on | No | Upstream data dependency — E2E agent uses for data-flow tracing |
+| Type | Yes | Determines which Tier 1 checks the Evaluator runs (frontend \| backend \| fullstack \| infrastructure) |
+| Acceptance criteria | Yes | Evaluator's verification checklist — must be testable |
+| Files of interest | No | Reference information — Generator may go beyond this list |
+| Effort estimate | Yes | Baseline for magnitude warning (S/M/L) |
+
+---
+
+## Checkpoint Mutation During Execution
+
+### Rules by Checkpoint State
+
+| State | Allowed Actions |
+|-------|----------------|
+| **PASS** | Immutable. Code, evaluation results, and status are final. |
+| **In progress** | Can abort (`$ENGINE abort`), rolls back to baseline_sha. |
+| **Not started** | Can modify scope, acceptance criteria, effort estimate, or delete entirely. |
+
+### Split After Failure
+
+When a checkpoint FAILs after max retries and human decides to split:
+
+1. Abort the failing checkpoint
+2. Edit spec.md — split the original into new checkpoints with new numbers
+3. Subsequent checkpoints renumber upward (CP05 → CP06, etc.)
+4. `harness continue` resumes from the first new checkpoint
+
+### Constraints
+
+- **Never** renumber PASS checkpoints
+- **Never** modify PASS checkpoint scope or criteria
+- **Never** insert new checkpoints before PASS checkpoints in the sequence
+
+---
+
+## Planner Responsibilities
+
+The Planner in Session 1 is responsible for:
+
+1. **Splitting** — break the task into appropriately granular checkpoints, each with a clear objective
+2. **Ordering** — arrange by dependency and implementation logic
+3. **Labeling** — mark each checkpoint with Type and Effort estimate
+4. **Writing criteria** — produce testable acceptance criteria (Spec Evaluator checks TESTABLE|VAGUE)
+
+The Planner does **not**:
+
+- Specify implementation details (Generator's job)
+- Lock down file lists (Files of interest is reference only)
+- Use sub-numbering (flat 01, 02, 03... only)
+- Determine implementation approach (Generator decides HOW)
