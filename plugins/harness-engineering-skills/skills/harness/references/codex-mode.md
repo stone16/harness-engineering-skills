@@ -15,9 +15,10 @@ Use this reference when Codex is the orchestrator. The pipeline (Planning → Ch
 
 - `codex --version`
 - `claude --version` (when using Claude CLI for sub-agent roles)
-- The repo contains `dotfiles/agents/harness-*.md`
-  - If the same agents are already installed in `~/.claude/agents/`, the invoke script reuses them.
-  - Otherwise it falls back to the checked-in agent markdown files.
+- Reviewer agent definitions — `claude-agent-invoke.sh` resolves each agent in this order (first existing file wins):
+  1. `~/.claude/agents/<name>.md` — user override (highest precedence).
+  2. `<plugin-root>/agents/<name>.md` — plugin-bundled; the primary location, ships with this plugin at `plugins/harness-engineering-skills/agents/`.
+  3. `<repo-root>/dotfiles/agents/<name>.md` — legacy fallback, preserved for backward compatibility with the private source repo.
 
 ## Script Discovery
 

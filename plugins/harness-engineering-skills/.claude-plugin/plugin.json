@@ -1,19 +1,23 @@
 {
   "name": "harness-engineering-skills",
   "version": "1.0.0",
-  "description": "Cross-LLM iterative code review loop. Spawns Codex or Gemini as peer reviewer, iterates until both agents reach consensus on code quality.",
+  "description": "Two Claude Code engineering skills bundled as one plugin: review-loop (cross-LLM iterative code review with Codex or Gemini as peer) and harness (cybernetics-based Planner→Generator→Evaluator→Retro orchestration for complex tasks).",
   "author": {
     "name": "stometa"
   },
   "license": "Apache-2.0",
-  "repository": "https://github.com/stone16/claude-review-loop",
+  "repository": "https://github.com/stone16/harness-engineering-skills",
   "keywords": [
     "code-review",
     "cross-llm",
     "codex",
     "gemini",
     "peer-review",
-    "iterative-review"
+    "iterative-review",
+    "harness",
+    "orchestration",
+    "multi-agent",
+    "cybernetics"
   ],
   "skills": ["./skills/"]
 }
