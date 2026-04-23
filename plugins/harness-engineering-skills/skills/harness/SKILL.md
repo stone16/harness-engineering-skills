@@ -1,6 +1,6 @@
 ---
 name: harness
-version: 0.13.0
+version: 0.14.0
 description: |
   Cybernetics-based multi-agent orchestration for complex tasks. Coordinates a
   Planner → Generator → Evaluator → Retro pipeline with clean-context sub-agents,
