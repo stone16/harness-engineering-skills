@@ -64,6 +64,78 @@ For each checkpoint evaluate:
 3. **Scaling concerns** — anything that would become a bottleneck at 10x load?
 4. **Security surface** — auth, data access, API boundaries adequately addressed?
 
+### Phase 5: Validation Claim Audit (always do last, before writing verdict)
+
+Empirical claims asserted without evidence are the worst kind of spec poison:
+they look authoritative but pre-commit the Generator to a choice no one has
+actually verified. Phase 5 is a mechanical scan, not a judgment call — run
+it on every spec review.
+
+**1. Scan the entire spec body** (Goal, Success Criteria, Technical Approach,
+Checkpoint descriptions, Out of Scope — everything except the YAML
+frontmatter) for these phrase patterns, case-insensitive:
+
+- `validated via`
+- `tested via`
+- `verified against`
+- `benchmarked at`
+- `measured at`
+- `reverse-engineered`
+
+Standalone tool names (`curl`, `psql`, `jq`, etc.) are **explicitly excluded**
+from the scan. They routinely appear in execution-guidance prose ("Generator
+should run `curl …`") and matching them would produce a storm of false
+positives that trains reviewers to ignore the gate.
+
+**2. For each match, check adjacency for inline evidence.** A well-supported
+claim MUST have, directly adjacent (same paragraph or the immediately
+following fenced block):
+
+- The exact `command` that was run, with any secrets/tokens/hostnames sanitized
+  to `REDACTED` or dummy values.
+- An `output snippet` proving the claim. Default cap is **≤ 20 lines**. The
+  spec author may override this with an HTML comment marker on its own line
+  **immediately before** the snippet: `<!-- evidence-limit: N -->`, where
+  `N ≤ 100`. Markers with `N > 100`, or markers placed anywhere other than
+  immediately before the snippet, do **not** raise the cap — treat the claim
+  as unsupported.
+- An **ISO-8601 capture date** (e.g. `2026-04-15` or `2026-04-15T14:32:10Z`)
+  so a reader can tell when the evidence was gathered.
+
+**3. Classify each match:**
+
+- **Missing any of the three elements above** → emit a concern with
+  `severity: critical` whose text explicitly quotes the claim phrase (so the
+  Planner can locate it mechanically). This forces `verdict: revise` — do
+  **not** approve a spec with unsupported empirical claims, even if every
+  other phase is clean.
+- **Match sits inside execution-guidance context** — i.e. the surrounding
+  prose is instructing the Generator to run the command later, not asserting
+  that someone has already run it (phrases like "Generator should run",
+  "the implementation will be tested via", "before merging, validate via") —
+  downgrade to `severity: info`. This avoids critical blocks on forward-looking
+  instructions that are not evidence claims at all.
+- **All three elements present and within the applicable line limit** →
+  no concern emitted for this match.
+
+**4. Record the audit outcome in the output** regardless of result:
+
+- If zero matches were found: note `Validation Claim Audit: 0 matches scanned,
+  clean.` in the Concerns section preamble so the Planner sees the gate ran.
+- If matches were found: list each as a numbered concern with severity,
+  quoted claim phrase, file location (section + nearby line marker), and a
+  suggested_fix that tells the Planner either "attach inline evidence per
+  protocol-quick-ref.md#Evidence Requirements" or "rephrase to make the
+  execution-guidance intent unambiguous".
+
+**Boundary rules — Phase 5 MUST NOT:**
+
+- Modify the spec itself (that is the Planner's job).
+- Attempt to verify whether the claim is *true* — Phase 5 audits presence and
+  shape of evidence, not correctness.
+- Suppress a match merely because it "seems reasonable" or "the author is
+  trusted". The rule is mechanical on purpose: authority is not evidence.
+
 ## Output
 
 Write `round-N-spec-review.md` in the spec-review/ directory per protocol format:
@@ -99,6 +171,9 @@ For each checkpoint:
 - Critical = blocks execution, must fix before approve
 - Warning = should fix, but won't block if justified
 - Info = suggestion for improvement
+- Begin this section with a one-line Phase 5 audit summary
+  (e.g. `Validation Claim Audit: 0 matches scanned, clean.` or
+  `Validation Claim Audit: 2 matches, 1 critical / 0 warning / 1 info.`).
 
 **Effort Estimate:** S/M/L per checkpoint
 

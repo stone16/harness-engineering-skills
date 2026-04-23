@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
-# peer-invoke.sh — Thin wrapper for Codex/Gemini CLI invocation
+# peer-invoke.sh — Thin wrapper for Codex/Claude/Gemini CLI invocation
 # Abstracts CLI differences so SKILL.md doesn't care which peer is used.
-# Codex inspects local files directly from the current repository workspace.
+# Peers inspect local files directly from the current repository workspace.
 #
 # Exit codes: 0=success, 1=error, 124=timeout
 #
 # Usage:
 #   ./peer-invoke.sh --peer codex --prompt-file /tmp/prompt.md \
+#     --output-file .review-loop/session/peer-output/round-1-raw.txt --timeout 600
+#   ./peer-invoke.sh --peer claude --prompt-file /tmp/prompt.md \
 #     --output-file .review-loop/session/peer-output/round-1-raw.txt --timeout 600
 #   ./peer-invoke.sh --peer codex --resume-session <session-id> \
 #     --prompt-file /tmp/reround.md --output-file .review-loop/session/peer-output/round-2-raw.txt
@@ -80,11 +82,15 @@ PROMPT_CONTENT="$(cat "$PROMPT_FILE")"
 
 TEMP_CODEX_HOME=""
 RUN_LOG=""
+RUN_ERR=""
 peer_exit_code=0
 
 cleanup() {
   if [[ -n "$RUN_LOG" && -f "$RUN_LOG" ]]; then
     rm -f "$RUN_LOG"
+  fi
+  if [[ -n "$RUN_ERR" && -f "$RUN_ERR" ]]; then
+    rm -f "$RUN_ERR"
   fi
   if [[ -n "$TEMP_CODEX_HOME" && -d "$TEMP_CODEX_HOME" ]]; then
     rm -rf "$TEMP_CODEX_HOME"
@@ -141,6 +147,82 @@ extract_session_id() {
   awk -F': ' '/^session id:/ { print $2; exit }' "$log_file"
 }
 
+parse_claude_json() {
+  local log_file="$1"
+  local output_file="$2"
+  local session_id_file="${3:-}"
+
+  python3 - "$log_file" "$output_file" "$session_id_file" <<'PY'
+import json
+import pathlib
+import sys
+
+log_path = pathlib.Path(sys.argv[1])
+output_path = pathlib.Path(sys.argv[2])
+session_id_path = pathlib.Path(sys.argv[3]) if len(sys.argv) > 3 and sys.argv[3] else None
+
+text = log_path.read_text()
+try:
+    payload = json.loads(text)
+    events = payload if isinstance(payload, list) else [payload]
+except json.JSONDecodeError:
+    events = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            events.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+session_id = ""
+result_text = None
+is_error = False
+
+for event in events:
+    if isinstance(event, dict):
+        session_id = event.get("session_id") or session_id
+        if event.get("type") == "result":
+            is_error = bool(event.get("is_error"))
+            result_text = event.get("result")
+            session_id = event.get("session_id") or session_id
+
+if result_text is None:
+    for event in reversed(events):
+        if not isinstance(event, dict):
+            continue
+        message = event.get("message")
+        if not isinstance(message, dict):
+            continue
+        content = message.get("content")
+        if not isinstance(content, list):
+            continue
+        text_parts = [
+            part.get("text", "")
+            for part in content
+            if isinstance(part, dict) and part.get("type") == "text"
+        ]
+        if text_parts:
+            result_text = "\n".join(part for part in text_parts if part)
+            session_id = event.get("session_id") or session_id
+            break
+
+if result_text is None:
+    print("Error: Claude output did not include a result payload", file=sys.stderr)
+    sys.exit(1)
+
+output_path.write_text(result_text)
+
+if session_id_path:
+    session_id_path.parent.mkdir(parents=True, exist_ok=True)
+    session_id_path.write_text(f"{session_id}\n")
+
+if is_error:
+    print(f"Error: Claude peer returned an error: {result_text}", file=sys.stderr)
+    sys.exit(1)
+PY
+}
+
 case "$PEER" in
   codex)
     command -v codex &>/dev/null || { echo "Error: codex CLI not found. Install: npm i -g @openai/codex" >&2; exit 1; }
@@ -184,13 +266,45 @@ case "$PEER" in
       fi
     fi
     ;;
+  claude)
+    command -v claude &>/dev/null || { echo "Error: claude CLI not found" >&2; exit 1; }
+    RUN_LOG="$(mktemp "${TMPDIR:-/tmp}/review-loop-claude-log.XXXXXX")"
+    RUN_ERR="$(mktemp "${TMPDIR:-/tmp}/review-loop-claude-stderr.XXXXXX")"
+    cd "$REPO_ROOT" || exit 1
+
+    CLAUDE_ARGS=(-p --output-format "${REVIEW_LOOP_CLAUDE_OUTPUT_FORMAT:-stream-json}")
+    if [[ "${REVIEW_LOOP_CLAUDE_SKIP_PERMISSIONS:-1}" == "1" ]]; then
+      CLAUDE_ARGS+=(--dangerously-skip-permissions)
+    fi
+    if [[ "${REVIEW_LOOP_CLAUDE_OUTPUT_FORMAT:-stream-json}" == "stream-json" ]]; then
+      CLAUDE_ARGS+=(--verbose)
+    fi
+
+    if [[ -n "$RESUME_SESSION" ]]; then
+      $TIMEOUT_CMD "$TIMEOUT" claude -r "$RESUME_SESSION" "${CLAUDE_ARGS[@]}" \
+        < "$PROMPT_FILE" > "$RUN_LOG" 2> "$RUN_ERR"
+    else
+      $TIMEOUT_CMD "$TIMEOUT" claude "${CLAUDE_ARGS[@]}" \
+        < "$PROMPT_FILE" > "$RUN_LOG" 2> "$RUN_ERR"
+    fi
+    peer_exit_code=$?
+
+    cat "$RUN_LOG" >&2
+    cat "$RUN_ERR" >&2
+
+    if [[ $peer_exit_code -eq 0 ]]; then
+      if ! parse_claude_json "$RUN_LOG" "$OUTPUT_FILE" "$SESSION_ID_FILE"; then
+        peer_exit_code=1
+      fi
+    fi
+    ;;
   gemini)
     command -v gemini &>/dev/null || { echo "Error: gemini CLI not found" >&2; exit 1; }
     $TIMEOUT_CMD "$TIMEOUT" gemini -p "$PROMPT_CONTENT" > "$OUTPUT_FILE" 2>&1
     peer_exit_code=$?
     ;;
   *)
-    echo "Error: Unsupported peer: $PEER. Use 'codex' or 'gemini'." >&2
+    echo "Error: Unsupported peer: $PEER. Use 'codex', 'claude', or 'gemini'." >&2
     exit 1
     ;;
 esac

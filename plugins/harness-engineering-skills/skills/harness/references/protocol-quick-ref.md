@@ -30,6 +30,141 @@ Sections: Goal, Success Criteria, Checkpoints, Technical Approach, Out of Scope,
 ```
 Each checkpoint MUST use `### Checkpoint NN: <title>` heading (zero-padded number). The engine uses this exact pattern for `assemble-context` extraction.
 
+### Evidence Requirements (enforced by Spec Evaluator Phase 5)
+
+Whenever the spec asserts that a decision, threshold, design, or value was
+validated empirically, the claim MUST carry **inline sanitized evidence**.
+This applies to any of the following phrase patterns appearing in the spec
+body (Goal / Success Criteria / Technical Approach / Checkpoint descriptions):
+
+- `validated via`
+- `tested via`
+- `verified against`
+- `benchmarked at`
+- `measured at`
+- `reverse-engineered`
+
+Standalone tool names (`curl`, `psql`, etc.) are intentionally **not** scanned —
+they frequently appear in execution-guidance prose (e.g. "Generator should run
+`curl ...`") and would produce false positives.
+
+**Required inline shape** — directly adjacent to the claim:
+
+1. The exact `command` that was run (sanitize: replace secrets/tokens/hostnames
+   with `REDACTED` or dummy values).
+2. An `output snippet` proving the claim — **≤ 20 lines by default**.
+3. An **ISO-8601 capture date** (e.g. `2026-04-15` or `2026-04-15T14:32:10Z`)
+   so a reader can tell when the evidence was gathered.
+
+**Overriding the line limit** — when a longer snippet is genuinely necessary
+(e.g. a benchmark table), place an HTML comment marker on its own line
+**immediately before** the snippet:
+
+```markdown
+<!-- evidence-limit: 60 -->
+```
+
+- `N` MUST be `≤ 100`. Values above 100 are rejected by Phase 5 as noise that
+  belongs in a separate evidence file, not inline in the spec.
+- The marker applies only to the immediately following snippet; the default
+  20-line cap resumes for subsequent claims.
+
+**Enforcement** — The Spec Evaluator's Phase 5 "Validation Claim Audit" scans
+for the phrase patterns above. Any match lacking command + output snippet
+(within the applicable line limit) + ISO-8601 date is emitted as a
+`severity: critical` concern causing verdict `revise`. Matches appearing in
+clearly execution-guidance context (e.g. "Generator should run `curl …`") are
+downgraded to `severity: info`.
+
+---
+
+## verification-block
+
+The canonical **Verification: block** format is a shared evidence artifact used
+wherever a reviewer, peer agent, or checkpoint artifact must back a rejection
+or warning with empirical proof. It is referenced by:
+
+- `round-N-planner-response.md` Rejected Changes entries — each warning-level
+  rejection attaches a Verification: block.
+- `review-loop` rejection entries — the `claude_actions[].verification` field
+  (see `log-schema.md` for the `deferred for verification` auto-downgrade
+  behavior).
+- Any future artifact adopting the Evidence over Authority principle.
+
+**Two valid forms** — every Verification: block MUST be exactly one of:
+
+### Form A — Evidence-based (preferred)
+
+```yaml
+Verification:
+  command: <exact command run, sanitized — secrets/tokens/hostnames
+            replaced with REDACTED or dummy values>
+  output: |
+    <≤ 20-line snippet of stdout/stderr proving the claim>
+  timestamp: <ISO-8601, e.g. 2026-04-17 or 2026-04-17T14:32:10Z>
+  contradiction-explanation: <one or two sentences explaining HOW the
+                              output contradicts the peer's finding>
+```
+
+All four fields (`command`, `output`, `timestamp`, `contradiction-explanation`)
+are REQUIRED in Form A.
+
+### Form B — Verification-impossible
+
+```yaml
+Verification:
+  reason: <why verification could not be performed — e.g. "no network in
+           sandbox", "external API requires auth we don't hold",
+           "behavior only reproduces under production load">
+```
+
+Using Form B is an admission that the rejection rests on authority (spec /
+design / convention) without empirical proof. Consumers of the block MUST
+auto-downgrade such rejections to `deferred for verification` status:
+
+- In `review-loop`, the finding is NOT counted as `rejected` in `rounds.json`
+  (it goes to the `deferred for verification` bucket per
+  `log-schema.md#claude_actionsaction`) and is surfaced in `summary.md`'s
+  "Deferred for Verification" section when `summary.deferred_for_verification > 0`.
+- In spec-review `round-N-planner-response.md`, a warning rejection carrying
+  Form B is authority-only: the rejection is recorded as deferred (rather than
+  closed) and SHOULD be re-surfaced in the next round by passing the prior
+  planner-response.md to the Spec Evaluator (see `planning-protocol.md` step 4's
+  "Prior deferred rejections" input). Re-insisted Form B deferrals remain
+  autonomous — the Planner should attach Form A evidence in the current round
+  if possible, otherwise continue deferring. Unresolved deferrals ride the
+  normal `max_spec_rounds`-exhaustion path to user escalation (scenario 1 in
+  the exhaustive list); warning-level concerns never trigger a separate user
+  escalation.
+
+### Output snippet limit
+
+The `output` field in Form A MUST be ≤ 20 lines by default. When a longer
+snippet is genuinely necessary (e.g. a benchmark table, a multi-step repro),
+place an HTML comment marker on its own line **immediately before** the block:
+
+```markdown
+<!-- evidence-limit: 60 -->
+Verification:
+  command: ...
+  output: |
+    ... up to 60 lines ...
+```
+
+- `N` MUST be `≤ 100`. Values above 100 are rejected as noise that belongs in
+  a separate evidence file rather than inline in the artifact.
+- The marker applies only to the immediately following block; the default
+  20-line cap resumes afterward.
+
+This convention matches the spec.md Evidence Requirements §Overriding the
+line limit — keep the two consistent.
+
+### Timestamp format
+
+ISO-8601, either date-only (`YYYY-MM-DD`) or date-time with timezone
+(`YYYY-MM-DDTHH:MM:SSZ` or `±HH:MM` offset). Locale-dependent formats
+(`04/17/2026`, `Apr 17 2026`) are rejected.
+
 ---
 
 ## round-N-spec-review.md (spec-review/)
@@ -63,6 +198,8 @@ round: <N>
 ```
 
 Sections: Accepted Changes, Rejected Changes, Spec Updated To (version).
+
+Rejected Changes entries for warnings MUST include a Verification: block per §verification-block.
 
 ---
 
@@ -263,7 +400,7 @@ Sections:
 **Phase commands:**
 - `pass-checkpoint` — requires latest iteration `output-summary.md`, latest iteration `evaluation.md`, `evaluation.md` verdict PASS, and fresh `evaluator-session-id.txt`; then records final SHA.
 - `pass-e2e` — requires latest `e2e/iter-N/e2e-report.md` verdict PASS; then records final SHA and sets phase to `e2e`.
-- `pass-review-loop` — verifies `.review-loop/latest/summary.md` + `rounds.json` exist, `session.status` is `consensus`, and `session.total_rounds >= 1`; then records the session id and sets phase to `review-loop`
+- `pass-review-loop` — verifies `.review-loop/latest/summary.md` + `rounds.json` exist, `session.status` is `consensus` or `read_only_complete`, and `session.total_rounds >= 1`; then records the session id and sets phase to `review-loop`
 - `skip-review-loop` — only allowed when `cross_model_review=false` in config, sets phase to `review-loop`
 - `begin-full-verify` — requires phase `review-loop`, sets phase to `full-verify`, creates `full-verify/` directory
 - `pass-full-verify` — requires `full-verify/iter-N/verification-report.md` with verdict PASS or PASS_WITH_WARNINGS, rejects stale artifacts, records final SHA

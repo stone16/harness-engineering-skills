@@ -1,12 +1,12 @@
 # Review Loop — Synthesis Protocol
 
-How Claude Code evaluates peer findings, modifies code, and drives convergence.
+How the host agent evaluates peer findings, modifies code, and drives convergence.
 
 ---
 
 ## 1. Finding Evaluation Criteria
 
-For each peer finding, Claude evaluates and decides **ACCEPT** or **REJECT**.
+For each peer finding, the host agent evaluates and decides **ACCEPT** or **REJECT**.
 
 ### ACCEPT when:
 
@@ -27,10 +27,15 @@ For each peer finding, Claude evaluates and decides **ACCEPT** or **REJECT**.
 
 ### Rejection Requirements
 
-Every rejection MUST include:
-1. **Specific reasoning** — not "I disagree" but "this is a false positive because X"
-2. **Evidence** — reference to code, docs, or conventions that support the rejection
-3. **Openness** — acknowledge if the peer has a point but explain the trade-off
+Every rejection MUST include a Verification: block per protocol-quick-ref.md §verification-block. Authority-only rejections (references to spec/design/conventions without verification output) are auto-downgraded to "deferred for verification".
+
+Supporting expectations around that block:
+
+1. **Specific reasoning** — the `contradiction-explanation` field must say "this is a false positive because X", not "I disagree".
+2. **Evidence** — the `command` and `output` fields back the reasoning with empirical proof; a reference to code, docs, or conventions ALONE is Form B (authority-only) and triggers the auto-downgrade.
+3. **Openness** — acknowledge if the peer has a point but explain the trade-off; a contradictory peer argument does not excuse omitting the Verification: block.
+
+When verification is genuinely impossible (no network, no access, load-dependent behavior), use Form B with a `reason` field. The finding is NOT recorded as `rejected` in rounds.json — it is recorded as `deferred for verification` (see [log-schema.md](log-schema.md#claude_actionsaction)) and surfaced in summary.md's "Deferred for Verification" section.
 
 ---
 
@@ -52,6 +57,7 @@ Every rejection MUST include:
 ### After modifying code:
 
 - Record exactly which files and lines were changed in `claude_actions.code_changes`
+  - `claude_actions` is the historical schema field name even when Codex hosts the loop
 - The next peer round should receive the updated local workspace plus the list of files touched this round
 
 ---
@@ -67,15 +73,15 @@ Every rejection MUST include:
 ### Per-finding resolution flow:
 
 ```
-Finding → Claude ACCEPT → Code changed → Peer re-reviews
+Finding → Host ACCEPT → Code changed → Peer re-reviews
   └── Peer satisfied → RESOLVED
   └── Peer has concerns about fix → New finding in next round
 
-Finding → Claude REJECT (with reasoning) → Sent to peer
+Finding → Host REJECT (with reasoning) → Sent to peer
   └── Peer: ACCEPTED_REJECTION → RESOLVED
-  └── Peer: INSIST (round 1) → Claude re-evaluates
-       └── Claude changes mind → ACCEPT → Code changed
-       └── Claude still disagrees → Send stronger reasoning
+  └── Peer: INSIST (round 1) → Host re-evaluates
+       └── Host changes mind → ACCEPT → Code changed
+       └── Host still disagrees → Send stronger reasoning
             └── Peer: ACCEPTED_REJECTION → RESOLVED
             └── Peer: INSIST (round 2) → ESCALATED
 ```
@@ -103,8 +109,8 @@ A finding is marked **ESCALATED** (needs human decision) when:
 
 - Debated for 2+ rounds without resolution (STALEMATE)
 - Involves an architectural decision beyond a code-level fix
-- Security concern where Claude cannot definitively determine correctness
-- Peer and Claude have fundamentally different interpretations of requirements
+- Security concern where the host agent cannot definitively determine correctness
+- Peer and host agent have fundamentally different interpretations of requirements
 
 ### Escalation format in summary.md:
 
@@ -113,7 +119,7 @@ A finding is marked **ESCALATED** (needs human decision) when:
 
 ### Finding f3: Database connection pool sizing
 - **Peer says**: Pool size of 10 is too low for expected load
-- **Claude says**: Pool size matches current infrastructure limits
+- **Host says**: Pool size matches current infrastructure limits
 - **Rounds debated**: 2
 - **Recommendation**: Review with infrastructure team before changing
 ```
@@ -122,7 +128,7 @@ A finding is marked **ESCALATED** (needs human decision) when:
 
 ## 5. Round Execution Checklist
 
-Claude follows this for each round:
+The host agent follows this for each round:
 
 - [ ] Read peer output from `peer-output/round-N-raw.txt`
 - [ ] Parse findings (look for `FINDING:`, `CONSENSUS:`, `ACCEPTED_REJECTION:`, `INSIST:`)
