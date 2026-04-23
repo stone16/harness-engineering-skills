@@ -378,6 +378,17 @@ Write `$SESSION_DIR/summary.md` in this format:
 |---|---------|----------|--------|------------|
 {for each finding: row with id, title, severity, accept/reject, final status}
 
+## Round Breakdown
+
+| Source | Real issues found |
+|--------|-------------------|
+| Resumed-session rounds (r1–rN)   | {resumed_real_issue_count} |
+| Fresh-final consensus pass       | {fresh_final_real_issue_count} |
+
+Fresh-final contributed {fresh_final_real_issue_count}/{total_real_issue_count} real issues this session.
+
+Count only findings that survived host evaluation (action=accept, or action=reject with Form B deferral). Exclude findings where the host's Form A verification produced empirical contradiction — those were peer false positives, not "real issues" for this purpose. The point of this breakdown is to track how much signal fresh-final finds that resumed rounds miss, so the load-bearing invariant in Phase 3 Documentation / Protocol Scope Rule stays visibly justified across sessions.
+
 ## Consensus
 
 {if consensus: "Both Claude Code and {peer} agree the code is in good shape after {N} rounds."}
