@@ -33,10 +33,18 @@ Review scope: {scope_type} ({scope_detail})
 {project_context}
 
 [WORKSPACE INSTRUCTIONS]
-1. Start with the listed files and read the local code directly from the workspace.
-2. Open adjacent files as needed to understand behavior and contracts.
-3. Judge the current code state in the repository, not a pasted patch.
-4. Do not make code changes unless explicitly instructed elsewhere.
+1. Read ONLY the files listed under [PRIORITY FILES TO INSPECT]. Do not
+   wander into adjacent files. If a specific finding genuinely requires
+   verifying a contract in a sibling file, read the minimum necessary
+   (one file, the relevant section) — do not recurse further.
+2. Treat the repository root above (`{repo_root}`) as the workspace
+   boundary. In a monorepo subdirectory (e.g. running inside a workspace
+   package), do NOT read project-level siblings above this root. Paths
+   outside the listed files that would require `../` traversal are out
+   of scope.
+3. Judge the current code state directly from these files, not from an
+   embedded diff.
+4. Do not make code changes.
 
 [OUTPUT FORMAT]
 Return findings as a structured list. For EACH finding use this exact format:
@@ -117,6 +125,12 @@ Repository root: {repo_root}
 
 [FILES TO VERIFY]
 {final_target_files}
+
+[SCOPE DISCIPLINE]
+Read ONLY the files listed above. Do not wander into adjacent files, and in
+a monorepo subdirectory do not traverse above the repository root. Expand
+only the minimum necessary (one file, one section) to verify a specific
+remaining contract — then stop.
 
 [RESOLUTION SUMMARY]
 | Finding | Severity | Resolution |
