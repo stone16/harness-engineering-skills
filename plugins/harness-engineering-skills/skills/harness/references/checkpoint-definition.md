@@ -66,6 +66,26 @@ This means:
 - Generator **may** create new files if necessary to achieve the objective
 - Generator **must not** make improvements, refactoring, or optimizations unrelated to the objective — document these in output-summary.md under "Recommended Follow-up"
 
+### Infrastructure checkpoints editing protocol/reference documents
+
+When a checkpoint's Scope includes ≥2 harness protocol files, OR edits any
+file with known sibling cross-references (e.g., `planning-protocol.md` ↔
+`codex-mode.md` ↔ `protocol-quick-ref.md`, or similar reference-document
+clusters), the Generator MUST perform a sibling-scan after completing the
+primary edit:
+
+1. Grep sibling protocol files for the phrase/rule just edited.
+2. If the sibling contains the same concept, re-read the sibling to verify
+   it does not contradict the primary edit.
+3. If contradiction exists, either (a) propose extending Scope via
+   output-summary.md's Scope Expansion Request, OR (b) document the residual
+   contradiction in Rule Conflict Notes so E2E Evaluator surfaces it.
+
+This is particularly important for escalation rules, enum values, carrier
+field names, and exact-sentence contracts — the E2E Data-Flow Audit tracks
+named producer→consumer contracts, not unnamed sibling contradictions, so
+those divergences would otherwise slip through to review-loop or retro.
+
 ---
 
 ## Effort Estimate
