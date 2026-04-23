@@ -1,13 +1,13 @@
 ---
 name: harness
-version: 0.11.0
+version: 0.13.0
 description: |
   Cybernetics-based multi-agent orchestration for complex tasks. Coordinates a
   Planner → Generator → Evaluator → Retro pipeline with clean-context sub-agents,
   per-checkpoint drift prevention, and persistent retro learning.
 
   Recommended workflow: Claude Code plans the spec (Session 1), Codex executes
-  autonomously (Session 2), Gemini reviews as cross-model peer via `review-loop`.
+  autonomously (Session 2), Claude CLI reviews as cross-model peer.
 
   Use when: "harness this task", "use harness", "orchestrate this",
   "harness plan", "harness continue", "harness execute <task-id>",
@@ -22,14 +22,14 @@ Fresh sub-agents per checkpoint prevent drift. Retro accumulates learning across
 ## Recommended Workflow
 
 ```
-Session 1 (Claude Code) → Plan + Spec → Spec review with cross-model evaluator
+Session 1 (Claude Code) → Brainstorm + Spec → Spec review with cross-model evaluator
     ↓ spec approved
 Session 2 (Codex)       → Execute checkpoints → Evaluate → E2E → Full-verify → PR → Retro
-    ↕ Gemini CLI as review-loop peer (cross-model quality gate)
+    ↕ Claude CLI as review-loop peer (cross-model quality gate)
 ```
 
-- **Session 1**: Claude Code for interactive discovery — brainstorming, multi-turn Q&A, spec refinement with Spec Evaluator.
-- **Session 2**: Codex for autonomous execution — implementation, evaluation, PR creation, retro. A second peer CLI (Codex or Gemini, matching the `review-loop` skill's supported peers) serves as cross-model reviewer via `review-loop`.
+- **Session 1**: Claude Code for interactive discovery — brainstorming + multi-turn Q&A to establish requirements. **After the user approves the brainstormed design, spec drafting and the Spec Evaluator review loop run autonomously** (agent-to-agent until consensus). See [references/planning-protocol.md](references/planning-protocol.md) "Post-Brainstorming Autonomy".
+- **Session 2**: Codex for autonomous execution — implementation, evaluation, PR creation, retro. Claude CLI serves as cross-model reviewer via `review-loop`.
 - Both hosts support both phases. The above is the **recommended** flow, not a hard constraint.
 
 ## Prerequisites
@@ -38,7 +38,7 @@ Session 2 (Codex)       → Execute checkpoints → Evaluate → E2E → Full-ve
 2. Reviewer role definitions: `harness-spec-evaluator.md`, `harness-generator.md`, `harness-evaluator.md`, `harness-retro.md` — ship with this plugin at `plugins/harness-engineering-skills/agents/`; user overrides may live at `~/.claude/agents/harness-*.md`
 3. `python3` on PATH (engine JSON operations)
 4. `git` repository initialized
-5. For Codex-hosted execution: `claude` CLI on PATH for sub-agent dispatch (reviewer roles). The `review-loop` peer is a separate choice (`codex` or `gemini`) — see the `review-loop` skill.
+5. For Codex-hosted execution: `claude` CLI on PATH for sub-agent dispatch and review-loop
 
 Verify (Claude Code): `claude plugin list | grep superpowers`
 Verify (review roles): `ls ~/.claude/plugins/**/plugins/harness-engineering-skills/agents/harness-*.md 2>/dev/null || ls plugins/harness-engineering-skills/agents/harness-*.md` (plugin-bundled) and `ls ~/.claude/agents/harness-*.md 2>/dev/null` (optional user override)
@@ -63,7 +63,8 @@ Delegate ALL file-system and git bookkeeping to the engine.
 | `max_spec_rounds` | `3` | 1–5 |
 | `max_eval_rounds` | `3` | 1–5 |
 | `cross_model_review` | `true` | `true` → triggers `review-loop` after E2E, before PR |
-| `cross_model_peer` | `codex` | `codex`, `gemini` — matches the peers supported by the bundled `review-loop` skill |
+| `cross_model_peer` | `codex` | `codex`, `claude`, `gemini` — use `claude` when Codex is the host |
+| `cross_model_read_only` | `false` | `true` = report-only, `false` = iterative fix |
 | `auto_retro` | `true` | `false` to skip retro |
 | `claude_md_path` | `auto` | Path to CLAUDE.md. `auto` detects |
 | `max_verify_rounds` | `3` | 1–5, max iterations for full-verify fix loop |

@@ -1,7 +1,7 @@
 # Review Loop — Prompt Templates
 
-Templates used by Claude Code to communicate with the peer reviewer (Codex/Gemini).
-Keep these templates stable. Claude should fill only the lightweight runtime placeholders before sending to peer via `peer-invoke.sh`.
+Templates used by the host agent to communicate with the peer reviewer (Codex/Claude/Gemini).
+Keep these templates stable. The host agent should fill only the lightweight runtime placeholders before sending to peer via `peer-invoke.sh`.
 
 ---
 
@@ -55,9 +55,9 @@ NO_FINDINGS: Code looks good. No issues detected.
 
 ---
 
-## Template 2: Re-review (After Claude Made Changes)
+## Template 2: Re-review (After the Host Agent Made Changes)
 
-Used in Round 2+ when Claude has addressed some findings and rejected others. Re-review should reuse the same peer session when possible.
+Used in Round 2+ when the host agent has addressed some findings and rejected others. Re-review should reuse the same peer session when possible.
 
 ```markdown
 You previously reviewed code and found issues. The primary developer has:
@@ -76,8 +76,10 @@ Review scope: {scope_type} ({scope_detail})
 [ACCEPTED AND FIXED]
 {accepted_findings_summary}
 
-[REJECTED FINDINGS WITH REASONING]
+[REJECTED FINDINGS WITH REASONING AND VERIFICATION]
 {rejected_findings_with_reasoning}
+
+Each rejected finding below includes a `Verification:` block (Form A or Form B per `protocol-quick-ref.md §verification-block`). Audit the verification output — not just the reasoning — when deciding whether to `ACCEPTED_REJECTION` or `INSIST`.
 
 [INSTRUCTIONS]
 1. Re-open the current local files, starting with the files listed above.
@@ -139,7 +141,7 @@ Please respond with ONE of:
 | `{target_files}` | Preflight file list | Newline-separated files for the peer to inspect locally |
 | `{project_context}` | CLAUDE.md + key config files | Project conventions and rules |
 | `{round_target_files}` | `git diff --name-only HEAD~1 HEAD` or latest touched files | Files to re-open during re-review |
-| `{accepted_findings_summary}` | rounds.json claude_actions where action=accept | List of what was fixed |
-| `{rejected_findings_with_reasoning}` | rounds.json claude_actions where action=reject | Rejections with reasoning |
+| `{accepted_findings_summary}` | rounds.json claude_actions where action=accept | List of what was fixed (`claude_actions` is the historical schema field name) |
+| `{rejected_findings_with_reasoning}` | rounds.json claude_actions where action=reject | Each entry includes reasoning AND the verbatim `Verification:` block from `claude_actions[].verification` (`claude_actions` is the historical schema field name) |
 | `{final_target_files}` | Union of files touched across the session | Files to verify in the final consensus round |
 | `{resolution_table_rows}` | Generated from rounds.json summary | Markdown table rows |

@@ -1,28 +1,30 @@
 ---
 name: review-loop
-version: 1.0.0
+version: 1.3.0
 description: |
-  Cross-LLM iterative code review loop. Spawns a peer reviewer (Codex or Gemini CLI)
+  Cross-LLM iterative code review loop. Spawns a peer reviewer (Codex, Claude, or Gemini CLI)
   to review code changes, then iterates until both agents agree on the final code state.
   Code gets modified during the loop — the final output is improved code + consensus report.
 
   Use when: "review loop", "peer review", "cross review", "review with codex",
-  "review with gemini", "让 codex review", "交叉 review", "peer review 这段代码",
-  "code review loop", "iterative review"
+  "review with claude", "review with gemini", "让 codex review", "让 claude review",
+  "交叉 review", "peer review 这段代码", "code review loop", "iterative review"
 ---
 
 # Review Loop — Cross-LLM Iterative Code Review
 
-Spawns a peer reviewer (Codex or Gemini) to independently review your code changes.
-Claude evaluates findings, implements accepted fixes, and re-submits for peer re-review.
+Spawns a peer reviewer (Codex, Claude, or Gemini) to independently review your code changes.
+The host agent evaluates findings, implements accepted fixes, and re-submits for peer re-review.
 Iterates until both agents agree on the final code state.
 
 **Key**: You (the human) do NOT need to participate. Watch progress via `.review-loop/<session>/rounds.json` and `summary.md`.
 
+**Compatibility note**: `rounds.json` keeps the historical field name `claude_actions` for backward compatibility. In Codex-hosted runs, that field still stores the host agent's decisions and code changes.
+
 ## Prerequisites
 
 - **Required**: `git` CLI
-- **Peer (one of)**: `codex` CLI (`codex --version`) or `gemini` CLI (`gemini --version`)
+- **Peer (one of)**: `codex` CLI (`codex --version`), `claude` CLI (`claude --version`), or `gemini` CLI (`gemini --version`)
 - **Optional**: `gh` CLI (for PR scope detection)
 
 ## Configuration
@@ -31,12 +33,15 @@ Iterates until both agents agree on the final code state.
 
 | Setting | Default | Options |
 |---------|---------|---------|
-| `peer_reviewer` | `codex` | `codex`, `gemini` |
+| `peer_reviewer` | `codex` | `codex`, `claude`, `gemini` |
 | `max_rounds` | `5` | 1–10 |
 | `timeout_per_round` | `600` | seconds |
 | `scope_preference` | `auto` | `auto`, `diff`, `branch`, `pr` |
+| `read_only` | `false` | `true` = report-only, no code changes |
 
-The peer reviewer always runs with full local repository access and the loop always implements accepted fixes. There is no read-only mode.
+The peer reviewer always runs with local repository access.
+
+**Read-only mode** (`read_only: true`): Peer reviews code and the host agent evaluates findings, but NO code changes are made. Output is a findings report only — no fix commits, no code evolution loop. Useful when review-loop is used as a **sensor** by other skills (e.g., the bundled `harness` skill's Evaluator Tier 2). In read-only mode, Phase 2 (Code Evolution Loop) is skipped entirely — after Round 1 findings are evaluated, the loop goes directly to Phase 3 report generation with all findings classified as `reported` (not `accepted`/`rejected`).
 
 ### Override via project config
 
@@ -61,17 +66,21 @@ Invocation overrides take highest precedence.
 **IMPORTANT**: Run `preflight.sh` in a SINGLE bash call. This eliminates ~15 sequential tool calls.
 
 ```bash
-# Locate the skill's scripts directory (works for plugin installs and local clones)
-SKILL_DIR=""
-for candidate in \
-  "$(find ~/.claude/plugins/cache -path "*/review-loop/scripts/preflight.sh" 2>/dev/null | head -1 | xargs dirname 2>/dev/null | xargs dirname 2>/dev/null)" \
-  "$(find ~/.claude/skills -path "*/review-loop/scripts/preflight.sh" 2>/dev/null | head -1 | xargs dirname 2>/dev/null | xargs dirname 2>/dev/null)"; do
-  [[ -d "$candidate" ]] && SKILL_DIR="$candidate" && break
-done
+SKILL_DIR="${SKILL_BASE_DIR:-}"
+if [[ -z "$SKILL_DIR" || ! -x "$SKILL_DIR/scripts/preflight.sh" ]]; then
+  for candidate in \
+    "$(find ~/.claude/plugins/cache -path "*/review-loop" -type d 2>/dev/null | head -1)" \
+    "$(find ~/.claude/skills -path "*/review-loop" -type d 2>/dev/null | head -1)" \
+    "$(find ~/.codex/skills -path "*/review-loop" -type d 2>/dev/null | head -1)"; do
+    [[ -x "$candidate/scripts/preflight.sh" ]] && SKILL_DIR="$candidate" && break
+  done
+fi
+
 if [[ -z "$SKILL_DIR" ]]; then
-  echo "Error: review-loop skill directory not found. Ensure the plugin is installed." >&2
+  echo "Error: review-loop skill directory not found" >&2
   exit 1
 fi
+
 PREFLIGHT_OUTPUT="$($SKILL_DIR/scripts/preflight.sh \
   --peer {peer_reviewer} \
   --max-rounds {max_rounds} \
@@ -143,7 +152,8 @@ PEER_SCRIPT=""
 for candidate in \
   "$SKILL_BASE_DIR/scripts/peer-invoke.sh" \
   "$(find ~/.claude/plugins/cache -path "*/review-loop/scripts/peer-invoke.sh" 2>/dev/null | head -1)" \
-  "$(find ~/.claude/skills -path "*/review-loop/scripts/peer-invoke.sh" 2>/dev/null | head -1)"; do
+  "$(find ~/.claude/skills -path "*/review-loop/scripts/peer-invoke.sh" 2>/dev/null | head -1)" \
+  "$(find ~/.codex/skills -path "*/review-loop/scripts/peer-invoke.sh" 2>/dev/null | head -1)"; do
   [[ -x "$candidate" ]] && PEER_SCRIPT="$candidate" && break
 done
 
@@ -155,7 +165,7 @@ fi
 
 > **Note**: `$SKILL_BASE_DIR` is set by Claude Code from the skill's metadata. The fallback searches the plugin cache and skills directories.
 
-`peer-invoke.sh` runs Codex in the current repository directory with full access so it can read local files directly. For Codex, it also launches against an isolated temporary `CODEX_HOME` with no MCP servers, strips inherited `CODEX_API_KEY` by default, and records the peer session id for reuse in later rounds.
+`peer-invoke.sh` runs the selected peer in the current repository directory so it can read local files directly. For Codex, it also launches against an isolated temporary `CODEX_HOME` with no MCP servers, strips inherited `CODEX_API_KEY` by default, and records the peer session id for reuse in later rounds. For Claude, it uses JSON output mode and records the Claude session id for reuse.
 
 Invoke:
 ```bash
@@ -175,11 +185,13 @@ Read `round-1-raw.txt`. Parse for:
 
 ### Step 1.5: Update rounds.json
 
-Add Round 1 data with all `peer_findings`. Set `claude_actions` to empty (not yet evaluated).
+Add Round 1 data with all `peer_findings`. Set `claude_actions` to empty (historical field name; stores host-side actions).
 
 ---
 
 ## Phase 2: Code Evolution Loop
+
+**If `read_only: true`**: Skip this entire phase. Go directly to Phase 3 with all Round 1 findings classified as `reported` (not accepted/rejected). No code changes, no checkpoint commits, no re-review rounds.
 
 For each round N (starting from Round 1's findings):
 
@@ -188,9 +200,9 @@ For each round N (starting from Round 1's findings):
 For each peer finding, apply the evaluation criteria from [synthesis-protocol.md](references/synthesis-protocol.md):
 
 - **ACCEPT**: The finding is valid and actionable
-- **REJECT**: The finding is a false positive or conflicts with project conventions
+- **REJECT**: The finding is a false positive or conflicts with project conventions — MUST attach a `Verification:` block per `protocol-quick-ref.md §verification-block`. Form B (verification-impossible) automatically downgrades to `deferred for verification`.
 
-Record each decision with reasoning in `claude_actions`.
+Record each decision with reasoning AND (for rejections) the `Verification:` block in `claude_actions[].verification`.
 
 ### Step 2.2: Implement accepted fixes
 
@@ -205,7 +217,7 @@ For each accepted finding:
 git add -A && git commit -m "review-loop: changes from round {N}" --allow-empty
 ```
 
-The `--allow-empty` flag ensures rounds where Claude only rejects findings (no code changes) don't fail.
+The `--allow-empty` flag ensures rounds where the host agent only rejects findings (no code changes) don't fail.
 
 ### Step 2.4: Update rounds.json
 
@@ -227,7 +239,7 @@ If round >= `max_rounds`:
 Use **Template 2** from [prompt-templates.md](references/prompt-templates.md):
 - Keep the template body fixed
 - Include only the files Claude changed this round via `git diff --name-only HEAD~1 HEAD`
-- Include rejected findings with Claude's reasoning
+- Include rejected findings with Claude's reasoning AND the verbatim `Verification:` block from `claude_actions[].verification` (so the peer can audit the evidence, not just the reasoning)
 - Include a short summary of accepted/fixed findings
 
 Do NOT paste the diff body into the prompt. Re-review should happen against the current local repository state.
@@ -259,7 +271,7 @@ Reuse the same Codex session for re-review rounds when available. This avoids re
 Look for:
 - `CONSENSUS:` → all resolved, go to Phase 3
 - `ACCEPTED_REJECTION: fN` → finding resolved, mark in rounds.json
-- `INSIST: fN` → peer insists, Claude must re-evaluate
+- `INSIST: fN` → peer insists, the host agent must re-evaluate
 - New `FINDING: fN` → new issues found in Claude's changes
 
 ### Step 2.9: Handle INSIST findings
@@ -309,14 +321,15 @@ Look for:
 - New `FINDING: fN` blocks → treat them as real blocking findings
 
 If the fresh final pass reports new findings:
-- If total rounds < `max_rounds`, append the findings as a new round and return to Phase 2.1
-- If total rounds >= `max_rounds`, mark them as `escalated` and continue with status `max_rounds`
+- **If `read_only: true`**: Record findings as `reported` in rounds.json. Do NOT return to Phase 2. Continue to report generation with status `read_only_complete`.
+- If `read_only: false` and total rounds < `max_rounds`, append the findings as a new round and return to Phase 2.1
+- If `read_only: false` and total rounds >= `max_rounds`, mark them as `escalated` and continue with status `max_rounds`
 
 ### Step 3.4: Complete rounds.json
 
 Update session metadata:
 - `completed_at`: current ISO timestamp
-- `status`: `consensus` or `max_rounds`
+- `status`: `consensus`, `max_rounds`, or `read_only_complete`
 - `total_rounds`: actual count
 - `summary`: compute totals from all rounds
 
@@ -347,11 +360,22 @@ Write `$SESSION_DIR/summary.md` in this format:
 {if consensus: "Both Claude Code and {peer} agree the code is in good shape after {N} rounds."}
 {if max_rounds: "Review stopped after {N} rounds. {M} items remain unresolved."}
 
+{if summary.deferred_for_verification > 0:}
+## Deferred for Verification
+
+{for each finding with action == "deferred for verification": bullet with
+  - finding id and title
+  - peer's authority-only argument (the original finding description)
+  - host's Form B `reason` (why verification was not possible)
+  - note: "auto-downgraded per synthesis-protocol.md — peer is NOT required to re-evaluate; surfaced here for human follow-up."}
+
 {if escalated items exist:}
 ## Escalated Items (Needs Human Decision)
 
 {for each escalated finding: peer's argument, Claude's argument, recommendation}
 ```
+
+The Deferred for Verification section is conditional: omit it entirely when `summary.deferred_for_verification == 0`. This section surfaces rejections that were auto-downgraded because they relied on authority (spec/design/conventions) without empirical proof per [protocol-quick-ref.md §verification-block](../harness/references/protocol-quick-ref.md#verification-block) Form B and [synthesis-protocol.md §Rejection Requirements](references/synthesis-protocol.md).
 
 ### Step 3.6: Terminal output
 

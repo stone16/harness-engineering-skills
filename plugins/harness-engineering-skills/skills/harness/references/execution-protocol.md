@@ -1,6 +1,6 @@
 # Execution Protocol (Session 2)
 
-**Recommended host**: Codex — autonomous execution, with a different peer CLI (`codex` or `gemini`) supplied to the bundled `review-loop` skill as the cross-model reviewer.
+**Recommended host**: Codex — autonomous execution, Claude CLI as cross-model reviewer.
 
 **Sub-agent dispatch**: In Claude Code use `Agent(subagent_type: "harness-*", ...)`. In Codex, the host implements locally (Generator role) and dispatches review-heavy roles via `claude-agent-invoke.sh`. See [codex-mode.md](codex-mode.md) for Codex-specific details.
 
@@ -148,13 +148,13 @@ One match → load. Multiple → ask user. None → inform user.
 5. Cross-model review (ENFORCED by engine phase gate — execute automatically, do NOT ask user):
    → If cross_model_review=true (default):
      → Directly invoke `review-loop` with scope: branch (no confirmation needed)
-     → Select a peer that differs from the host (e.g. cross_model_peer=gemini when Codex hosts)
-     → review-loop always iterates to consensus (no read-only mode in the bundled skill)
+     → When Codex is the host, set cross_model_peer=claude for true cross-model review
+     → Default mode: read_only=false (peer finds issues, host fixes, iterate to consensus)
      → review-loop produces .review-loop/<session>/summary.md + rounds.json
      → If review-loop finds critical issues → fix and re-run E2E (step 4)
      → $ENGINE pass-review-loop --task-id <id>
        (engine verifies .review-loop/latest/summary.md + rounds.json exist,
-        session.status is consensus, and session.total_rounds >= 1)
+        session.status is consensus/read_only_complete, and session.total_rounds >= 1)
    → If cross_model_review=false:
      → $ENGINE skip-review-loop --task-id <id>
        (engine verifies config flag before allowing skip)
@@ -316,8 +316,8 @@ When Generator encounters conflicting rules:
 | Dependency | Used By | Purpose |
 |-----------|---------|---------|
 | `superpowers` plugin | Generator, Orchestrator | TDD (preloaded), verification-before-completion, systematic-debugging, brainstorming in Claude Code |
-| bundled `review-loop` skill | Orchestrator | Cross-model peer review step (supports peers: codex, gemini) |
-| `claude` CLI | Codex-hosted Orchestrator | Sub-agent role dispatch for Spec Evaluator / Evaluator / Retro (not a `review-loop` peer — review-loop supports codex and gemini) |
+| `sto` plugin (this skill) | Orchestrator | `review-loop` in Claude Code |
+| `claude` CLI | Codex-hosted Orchestrator | Sub-agent roles + optional `review-loop --peer claude` |
 
 **Optional (enhanced capabilities):**
 

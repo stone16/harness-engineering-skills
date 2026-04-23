@@ -1,6 +1,7 @@
 # Review Loop — JSON Log Schema
 
 This defines the structure of `rounds.json`, the structured log file created in each review session.
+The field name `claude_actions` is retained for backward compatibility even when Codex is the host agent.
 
 ## File Location
 
@@ -16,7 +17,7 @@ This defines the structure of `rounds.json`, the structured log file created in 
     "id": "<YYYY-MM-DD>-<HHMMSS>-<scope-description>",
     "scope": "local-diff | pr-<number> | commit-<sha>",
     "scope_detail": "human-readable summary, e.g. '3 files changed, 42 insertions'",
-    "peer": "codex | gemini",
+    "peer": "codex | claude | gemini",
     "started_at": "ISO 8601 timestamp",
     "completed_at": "ISO 8601 timestamp (null if in_progress)",
     "status": "in_progress | consensus | max_rounds | aborted",
@@ -40,9 +41,10 @@ This defines the structure of `rounds.json`, the structured log file created in 
       "claude_actions": [
         {
           "finding_id": "f<N>",
-          "action": "accept | reject",
-          "reasoning": "Why Claude accepted or rejected this finding",
-          "code_changes": ["file:line-range that was modified (if accepted)"]
+          "action": "accept | reject | reported | deferred for verification",
+          "reasoning": "Why Claude accepted or rejected this finding (empty for reported)",
+          "verification": "Inline Verification: block (Form A or Form B per protocol-quick-ref.md §verification-block) — REQUIRED for action=reject; OPTIONAL for accept/reported; Form B presence triggers auto-downgrade from reject to 'deferred for verification'",
+          "code_changes": ["file:line-range that was modified (if accepted, empty for reported)"]
         }
       ]
     }
@@ -52,6 +54,8 @@ This defines the structure of `rounds.json`, the structured log file created in 
     "accepted": 0,
     "rejected_then_resolved": 0,
     "escalated": 0,
+    "reported": 0,
+    "deferred_for_verification": 0,
     "files_modified": ["list of files that were changed"]
   }
 }
@@ -67,6 +71,7 @@ This defines the structure of `rounds.json`, the structured log file created in 
 | `consensus` | Both agents agree — review complete |
 | `max_rounds` | Hit MAX_ROUNDS limit, some items may be unresolved |
 | `aborted` | Review was cancelled (timeout, error, user interrupt) |
+| `read_only_complete` | Read-only mode — findings reported, no code changes made |
 
 ### peer_findings[].severity
 
@@ -81,8 +86,10 @@ This defines the structure of `rounds.json`, the structured log file created in 
 
 | Action | Meaning |
 |--------|---------|
-| `accept` | Claude agrees and will implement the fix |
-| `reject` | Claude disagrees, provides reasoning to peer |
+| `accept` | Host agent agrees and will implement the fix |
+| `reject` | Host agent disagrees, provides reasoning to peer, AND attaches a `Verification:` block in `claude_actions[].verification` per [protocol-quick-ref.md §verification-block](../../harness/references/protocol-quick-ref.md#verification-block). Form B (verification-impossible) triggers auto-downgrade to `deferred for verification` — see [synthesis-protocol.md §Rejection Requirements](./synthesis-protocol.md). |
+| `reported` | Finding recorded without action (read-only mode) |
+| `deferred for verification` | Finding is not blocking but remains unresolved; peer is NOT required to re-evaluate; surfaced in summary.md's Deferred for Verification section. Produced by auto-downgrade of an authority-only rejection per [synthesis-protocol.md §Rejection Requirements](../references/synthesis-protocol.md) (Form B Verification: block — see [protocol-quick-ref.md §verification-block](../../harness/references/protocol-quick-ref.md#verification-block)). |
 
 ## Example
 

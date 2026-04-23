@@ -7,7 +7,7 @@ Use this reference when Codex is the orchestrator. The pipeline (Planning → Ch
 - Codex acts as the Orchestrator and local implementer (Generator role within checkpoints).
 - `harness-engine.sh` remains the single source of truth for task state, checkpoints, and phase gates — same engine, same commands, same phase machine.
 - Sub-agent roles (Spec Evaluator, Evaluator, Retro) are dispatched via `claude-agent-invoke.sh` to a Claude CLI process. Any CLI that accepts a prompt and returns structured output can fill these roles.
-- `review-loop` uses a peer reviewer configured via its own skill (`codex` or `gemini`) — the choice is a config option, not an architectural constraint.
+- `review-loop` can use any available peer (`codex`, `claude`, or `gemini`) — the choice is a config option, not an architectural constraint.
 
 > **Symmetry**: The role assignments are interchangeable. Just as Codex can host with Claude sub-agents, Claude Code can host with Codex as the review-loop peer. This document covers the Codex-as-host configuration.
 
@@ -36,8 +36,10 @@ CLAUDE_AGENT="$HARNESS_DIR/scripts/claude-agent-invoke.sh"
 
 1. Clarify requirements directly with the user.
    - If a dedicated brainstorming skill is unavailable in Codex, do the questioning and design synthesis manually.
-2. Write `.harness/<task-id>/spec.md` in the normal Harness format.
-3. For each spec-review round, invoke Claude as the spec reviewer:
+2. Write `.harness/<task-id>/spec.md` in the normal Harness format. **After this step,
+   the remainder of planning is autonomous** — see the "Post-Brainstorming Autonomy"
+   section in [planning-protocol.md](planning-protocol.md).
+3. For each spec-review round, invoke Claude as the spec reviewer (fresh each round):
 
 ```bash
 "$CLAUDE_AGENT" \
@@ -46,7 +48,16 @@ CLAUDE_AGENT="$HARNESS_DIR/scripts/claude-agent-invoke.sh"
   --output-file ".harness/$TASK_ID/spec-review/round-${ROUND}-spec-review.md"
 ```
 
-4. Apply accepted spec changes locally in Codex, then repeat until approved.
+4. Apply accepted spec changes locally in Codex and write `round-N-planner-response.md`
+   documenting accepted/rejected concerns with rationale. Repeat autonomously until
+   `approve` verdict or `max_spec_rounds` is exhausted. Escalate to the user only
+   in the scenarios enumerated in `planning-protocol.md`'s `Post-Brainstorming
+   Autonomy` exhaustive list (max_spec_rounds exhaustion, critical-contradicts-design,
+   or critical-acceptance-infeasible).
+   - Rejecting a warning-severity concern requires a `Verification:` block in the
+     Rejected Changes entry (see [protocol-quick-ref.md#verification-block](protocol-quick-ref.md#verification-block)).
+     Critical concerns cannot be rejected — escalate per the
+     `Post-Brainstorming Autonomy` rules in [planning-protocol.md](planning-protocol.md).
 
 ## Execution in Codex
 
@@ -78,13 +89,16 @@ For each checkpoint:
 
 ## Cross-Model Review
 
-After E2E passes, `review-loop` provides the cross-model quality gate. Set `cross_model_peer` in `.harness/config.json` (or pass `--cross-model-peer <name>` to the engine) to pick a peer supported by the bundled `review-loop` skill:
+After E2E passes, `review-loop` provides the cross-model quality gate. Configure it with any available peer:
 
-- `cross_model_peer=codex` — a second Codex instance reviews (fresh context in a clean process)
-- `cross_model_peer=gemini` — Gemini reviews (true cross-model when Codex hosts)
+- `peer_reviewer=claude` — Claude reviews Codex's implementation
+- `peer_reviewer=codex` — a second Codex instance reviews (same-model, still useful for fresh context)
+- `peer_reviewer=gemini` — Gemini reviews
 
-`review-loop` always runs as an iterative fix loop (peer finds issues, host fixes, iterate to consensus). There is no read-only mode in the bundled skill.
+Options:
+- `read_only=false` — normal fix loop (peer finds issues, host fixes, iterate)
+- `read_only=true` — report-only (collect signal without code changes)
 
-`pass-review-loop` treats `.review-loop/latest/rounds.json` as a completion contract: `session.status` must be `consensus`, and `session.total_rounds` must be at least 1.
+`pass-review-loop` now treats `.review-loop/latest/rounds.json` as a completion contract: `session.status` must be `consensus` or `read_only_complete`, and `session.total_rounds` must be at least 1.
 
 This is the same review-loop step that the Claude Code-hosted path runs. The peer choice is orthogonal to who hosts.
