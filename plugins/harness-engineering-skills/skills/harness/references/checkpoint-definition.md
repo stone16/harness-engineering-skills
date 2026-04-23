@@ -66,6 +66,26 @@ This means:
 - Generator **may** create new files if necessary to achieve the objective
 - Generator **must not** make improvements, refactoring, or optimizations unrelated to the objective — document these in output-summary.md under "Recommended Follow-up"
 
+### Infrastructure checkpoints editing protocol/reference documents
+
+When a checkpoint's Scope includes ≥2 harness protocol files, OR edits any
+file with known sibling cross-references (e.g., `planning-protocol.md` ↔
+`codex-mode.md` ↔ `protocol-quick-ref.md`, or similar reference-document
+clusters), the Generator MUST perform a sibling-scan after completing the
+primary edit:
+
+1. Grep sibling protocol files for the phrase/rule just edited.
+2. If the sibling contains the same concept, re-read the sibling to verify
+   it does not contradict the primary edit.
+3. If contradiction exists, either (a) propose extending Scope via
+   output-summary.md's Scope Expansion Request, OR (b) document the residual
+   contradiction in Rule Conflict Notes so E2E Evaluator surfaces it.
+
+This is particularly important for escalation rules, enum values, carrier
+field names, and exact-sentence contracts — the E2E Data-Flow Audit tracks
+named producer→consumer contracts, not unnamed sibling contradictions, so
+those divergences would otherwise slip through to review-loop or retro.
+
 ---
 
 ## Effort Estimate
@@ -143,6 +163,52 @@ Every checkpoint MUST include at least one testability criterion. Strategy diffe
 - `Depends on` declares data dependencies (e.g., "CP03 uses the hook created in CP01") — used by E2E agent for data-flow tracing
 - Execution order is always linear regardless of dependency structure
 - If two checkpoints are completely independent, order does not matter, but numbering still increments
+
+---
+
+## Wiring Checkpoint — Multi-Layer Integration Pattern
+
+When a task has **≥5 checkpoints spanning ≥2 layers** (e.g., primitives in a
+lib layer + services in an app layer + hooks in a UI layer), the Planner
+MUST add a dedicated **Wiring Checkpoint** whose sole job is to verify that
+every primitive introduced by earlier checkpoints is invoked by its real
+production caller with the correct arguments, without mocking the seam
+under test.
+
+Module-boundary decomposition tends to leave "someone-else-will-wire-this-
+later" gaps — each CP ships a self-consistent primitive, but no CP owns
+end-to-end caller threading. Those gaps are hard to catch with isolated
+per-checkpoint validation and tend to survive internal full-verify because
+the integration smoke path still mocks the seams where the bugs live.
+
+### Wiring Checkpoint rules
+
+1. **No new primitives.** The Wiring CP only threads and verifies existing
+   ones. If the Wiring CP needs a new primitive, it belongs in a regular
+   checkpoint first.
+2. **Real-caller tests.** For each new primitive introduced by earlier
+   checkpoints, add a test that exercises its **real production caller**
+   and asserts the call shape and arguments (not a mock of the caller).
+3. **Caller-to-primitive verification matrix.** Include a table in the
+   Wiring CP's output-summary.md mapping each primitive to its production
+   caller and the test file that exercises that call.
+4. **Explicit mock boundaries.** List which layers are mocked in each test
+   and which are real. A top-level smoke test that mocks everything below
+   the entry point is **not** a wiring test for seams above the mocked
+   layer — flag those explicitly.
+
+### When to add a Wiring Checkpoint
+
+| Task shape | Wiring CP needed? |
+|---|---|
+| ≤4 checkpoints, single layer | No — per-CP integration tests suffice |
+| ≥5 checkpoints, single layer | Consider one if seams cross ≥2 concerns (e.g. DB + HTTP) |
+| ≥5 checkpoints, ≥2 layers | **Yes — add a dedicated Wiring CP as the last pre-E2E checkpoint** |
+| Any shape with a caller-threading gap pattern in retro history | Yes |
+
+The Wiring CP is typically the last checkpoint before E2E. Failed wiring is
+much cheaper to diagnose at this stage than at E2E where multiple layers
+are in play simultaneously.
 
 ---
 

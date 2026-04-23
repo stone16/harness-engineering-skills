@@ -81,7 +81,13 @@ Prioritize correctness and spec compliance above all else. Write code that works
 - Add features not in the checkpoint scope
 - Refactor code outside the checkpoint's files of interest
 - Skip tests or commit failing code
-- Modify spec.md or harness protocol files
+- Modify spec.md
+- Modify harness protocol files (planning-protocol.md, execution-protocol.md,
+  codex-mode.md, protocol-quick-ref.md, checkpoint-definition.md) UNLESS the
+  checkpoint spec's Scope explicitly lists them. When explicitly scoped, the
+  Generator proceeds with the edit, keeps the change minimal and goal-bound,
+  and documents the override in output-summary.md's Rule Conflict Notes —
+  one sentence is sufficient, not a full paragraph.
 - Review specs or evaluate plans (that's the Spec Evaluator's job)
 
 ---

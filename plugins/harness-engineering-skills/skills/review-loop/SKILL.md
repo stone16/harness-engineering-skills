@@ -287,6 +287,29 @@ Then loop back to Step 2.1 with the updated findings list.
 
 ## Phase 3: Final Consensus + Report
 
+### Documentation / Protocol Scope Rule (load-bearing invariant)
+
+When the review scope targets documentation or protocol files — defined as
+any `.md` file under a skill's `references/`, `agents/`, or a repo-level
+`dotfiles/` directory — fresh-final consensus (Step 3.2) is **load-bearing
+and non-optional**. Historical evidence: on PR #42 the `codex-mode.md` ↔
+`planning-protocol.md` escalation-rule contradiction (`rFinal.f1`) was
+caught only by fresh-final; resumed-session rounds had converged on
+CONSENSUS while the bug was still shipping.
+
+Operational implications:
+
+- Step 3.2 MUST run in a fresh peer session even if earlier rounds
+  converged cleanly. Any future optimization that would skip fresh-final
+  under "all rounds resolved quickly" heuristics MUST exclude this scope.
+- If fresh-final reports new findings on docs/protocol scope with
+  `read_only: false`, treat them as a new iteration round per Step 3.3 —
+  Consensus is reached only when a fresh session returns zero findings.
+- In `read_only: true` mode, fresh-final findings on docs/protocol scope
+  MUST be surfaced in summary.md with the explicit note that these would
+  have been blockers in normal mode — do not let them disappear silently
+  into the generic `reported` bucket.
+
 ### Step 3.1: Build final consensus prompt
 
 Use **Template 3** from [prompt-templates.md](references/prompt-templates.md).
@@ -354,6 +377,17 @@ Write `$SESSION_DIR/summary.md` in this format:
 | # | Finding | Severity | Action | Resolution |
 |---|---------|----------|--------|------------|
 {for each finding: row with id, title, severity, accept/reject, final status}
+
+## Round Breakdown
+
+| Source | Real issues found |
+|--------|-------------------|
+| Resumed-session rounds (r1–rN)   | {resumed_real_issue_count} |
+| Fresh-final consensus pass       | {fresh_final_real_issue_count} |
+
+Fresh-final contributed {fresh_final_real_issue_count}/{total_real_issue_count} real issues this session.
+
+Count only findings that survived host evaluation (action=accept, or action=reject with Form B deferral). Exclude findings where the host's Form A verification produced empirical contradiction — those were peer false positives, not "real issues" for this purpose. The point of this breakdown is to track how much signal fresh-final finds that resumed rounds miss, so the load-bearing invariant in Phase 3 Documentation / Protocol Scope Rule stays visibly justified across sessions.
 
 ## Consensus
 

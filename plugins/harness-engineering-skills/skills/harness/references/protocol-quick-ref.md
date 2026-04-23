@@ -266,6 +266,7 @@ Each section has: ran, passed/results, errors/failures, **evidence** (path in ev
 ### Tier 2: LLM Code Review
 
 - patterns_checked, issues_found (severity: critical|warning|info), positive_observations, evidence
+- **fault_path_probe** (MANDATORY field): for any code path that reads/parses external input (files, env vars, stdin, arguments into `jq`/`sed`/`awk`/`python`/bash parameter expansion), record either (a) the malformed-input test in the CP's suite and its asserted behaviour, OR (b) the evaluator-led simulation (command + stdout/stderr + exit code) under a `Fault-path probe` heading with evidence in `evidence/`. For CPs with no external input (pure computation, compile-time constants), fill this field with one explicit line: `N/A — pure computation` (or similar). Atomic-writer patterns (`mktemp` + `mv`) must additionally verify the tempfile is on the same filesystem as the target — naked `mktemp` defaults to `$TMPDIR` and produces a non-atomic cross-fs copy+unlink.
 
 ### Verdict
 
