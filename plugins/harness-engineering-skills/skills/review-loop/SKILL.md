@@ -1,6 +1,6 @@
 ---
 name: review-loop
-version: 1.3.0
+version: 1.4.0
 description: |
   Cross-LLM iterative code review loop. Spawns a peer reviewer (Codex, Claude, or Gemini CLI)
   to review code changes, then iterates until both agents agree on the final code state.
