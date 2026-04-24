@@ -55,6 +55,10 @@ Everything else is autonomous. Record any remaining ambiguities in the spec's
 1. Receive task description from user
 
 2. Clarify requirements:
+   → Assign the task id early, then fork the Convention Scout in parallel with
+     brainstorming so it can scan while the user conversation continues:
+     - Claude Code: `Agent(subagent_type: "harness-convention-scout", prompt: <task id + repo root + output path .harness/<task-id>/host-conventions-card.md>)`
+     - Codex-hosted planning: `claude-agent-invoke.sh --agent harness-convention-scout --prompt-file "$PROMPT_FILE" --output-file ".harness/<task-id>/host-conventions-card.md"`
    → Invoke superpowers:brainstorming for requirements discovery
    → Follow brainstorming's questioning process (explore, clarify, propose approaches,
      present design, get user approval)
@@ -62,6 +66,14 @@ Everything else is autonomous. Record any remaining ambiguities in the spec's
    → Do NOT proceed to brainstorming's "Write design doc" / "Invoke writing-plans" steps
 
 3. Produce spec.md → write to .harness/<task-id>/spec.md  (AUTONOMOUS — no user pause)
+   → Strict-block on the Scout join before drafting the spec, with a 3-minute
+     (180 seconds) timeout at the join point.
+   → If the Card exists and has `scout_status: complete`, read it before
+     writing Technical Approach and acceptance criteria.
+   → If the Scout times out, crashes, writes no Card, or records
+     `scout_status != complete`, proceed without pausing; the spec must record
+     `Host Conventions Card: unavailable`, and Retro treats this as P0-P5
+     absent for gap classification.
    → Convert the approved design into Harness spec format (see protocol-quick-ref.md)
    → Include checkpoints with ### Checkpoint NN: <title> format
    → Set status: draft in YAML frontmatter
