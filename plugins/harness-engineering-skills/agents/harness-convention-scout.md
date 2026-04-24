@@ -61,6 +61,10 @@ what the repository intends; later tiers show what appears to run.
 
 Keyword match rule: `test|testing|verify|qa`
 
+Apply the keyword match rule to P3-P9 path names, filenames, and the first
+200 lines of text content, case-insensitively. Treat it as a discovery hint,
+not proof of a documented convention.
+
 ## Key Actions
 
 1. Locate `.harness/<task-id>/host-conventions-card.md` as the output artifact

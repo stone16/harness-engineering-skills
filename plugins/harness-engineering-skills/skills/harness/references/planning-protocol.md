@@ -79,7 +79,7 @@ Everything else is autonomous. Record any remaining ambiguities in the spec's
    → Set status: draft in YAML frontmatter
 
 4. Spawn Spec Evaluator sub-agent for spec review  (AUTONOMOUS — no user pause):
-   → Agent(subagent_type: "harness-spec-evaluator", prompt: <spec + codebase context + protocol-quick-ref.md + prior deferred rejections>)
+   → Agent(subagent_type: "harness-spec-evaluator", prompt: <spec + codebase context + protocol-quick-ref.md + host-conventions-card.md when scout_status: complete, or Card unavailable note + prior deferred rejections>)
    → **Prior deferred rejections input** (rounds ≥ 2): include the prior
      `round-(N-1)-planner-response.md`'s Rejected Changes entries whose
      Verification: block is Form B (authority-only). Ask the Evaluator to

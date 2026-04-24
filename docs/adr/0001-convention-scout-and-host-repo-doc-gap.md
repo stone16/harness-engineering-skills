@@ -85,13 +85,17 @@ conventions and executable checks is always high priority.
 
 ## Validation
 
-- The Harness protocol quick reference contains the canonical
-  `host-conventions-card.md` schema and probe priority list.
-- The Scout agent references that canonical schema instead of redefining it.
-- Planning protocol, checkpoint definition guidance, Spec Evaluator, and Retro
-  each consume the Card only through the documented artifact contract.
-- ADR-0001 keeps the rationale separate from the canonical Card definition to
-  prevent three-way drift.
+- Specs cite the Card when it is available and move partial, full, or unavailable
+  convention gaps into Open Questions instead of inventing verification rules.
+- Spec Evaluator attributes VAGUE criteria with `reason: criterion-wording` or
+  `reason: tier-absence` only when `scout_status: complete`; otherwise it
+  records Card unavailability.
+- Retro emits Issue-ready Host Repo Documentation Gap items from the Card
+  decision table, including MADR drafts when ADR culture is detected and plain
+  reports when it is not.
+- Future Card schema or P0-P9 changes update the canonical
+  `protocol-quick-ref.md` section first; consumers remain path references or
+  implementation checklists, not competing definitions.
 
 ## Related ADRs
 

@@ -36,13 +36,17 @@ CLAUDE_AGENT="$HARNESS_DIR/scripts/claude-agent-invoke.sh"
 
 1. Clarify requirements directly with the user.
    - If a dedicated brainstorming skill is unavailable in Codex, do the questioning and design synthesis manually.
-2. Write `.harness/<task-id>/spec.md` in the normal Harness format. **After this step,
+2. At brainstorm start, fork the Scout agent with `--agent
+   harness-convention-scout`; it writes
+   `.harness/<task-id>/host-conventions-card.md` for Planner consumption.
+3. At spec drafting start, strict-block for the Scout result using the same
+   3-minute / 180-second timeout defined in [planning-protocol.md](planning-protocol.md).
+   On timeout, crash, or `scout_status != complete`, proceed and record
+   `Host Conventions Card: unavailable`.
+4. Write `.harness/<task-id>/spec.md` in the normal Harness format. **After this step,
    the remainder of planning is autonomous** — see the "Post-Brainstorming Autonomy"
    section in [planning-protocol.md](planning-protocol.md).
-3. When planning needs host-repo convention discovery, invoke the Scout agent
-   with `--agent harness-convention-scout`; it writes
-   `.harness/<task-id>/host-conventions-card.md` for Planner consumption.
-4. For each spec-review round, invoke Claude as the spec reviewer (fresh each round):
+5. For each spec-review round, invoke Claude as the spec reviewer (fresh each round):
 
 ```bash
 "$CLAUDE_AGENT" \
@@ -51,7 +55,7 @@ CLAUDE_AGENT="$HARNESS_DIR/scripts/claude-agent-invoke.sh"
   --output-file ".harness/$TASK_ID/spec-review/round-${ROUND}-spec-review.md"
 ```
 
-5. Apply accepted spec changes locally in Codex and write `round-N-planner-response.md`
+6. Apply accepted spec changes locally in Codex and write `round-N-planner-response.md`
    documenting accepted/rejected concerns with rationale. Repeat autonomously until
    `approve` verdict or `max_spec_rounds` is exhausted. Escalate to the user only
    in the scenarios enumerated in `planning-protocol.md`'s `Post-Brainstorming

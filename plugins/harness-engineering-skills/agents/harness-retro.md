@@ -42,7 +42,10 @@ Be analytical and evidence-based. Look for patterns, not individual incidents. D
      `scout_status: complete`; otherwise treat the Card as unavailable and
      classify as P0-P5 absent for gap analysis.
    - Mark these findings with `source: host-conventions-card.md`.
-   - Apply this decision table:
+   - If the Card is unavailable or `scout_status != complete`, emit a plain
+     report with a soft ADR suggestion and treat `adr_culture_detected` as
+     false by default.
+   - Apply this decision table when the Card is complete:
 
      | Card condition | Retro category outcome |
      |---|---|
