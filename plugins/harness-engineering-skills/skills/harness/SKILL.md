@@ -1,6 +1,6 @@
 ---
 name: harness
-version: 0.14.0
+version: 0.15.0
 description: |
   Cybernetics-based multi-agent orchestration for complex tasks. Coordinates a
   Planner → Generator → Evaluator → Retro pipeline with clean-context sub-agents,
@@ -35,7 +35,7 @@ Session 2 (Codex)       → Execute checkpoints → Evaluate → E2E → Full-ve
 ## Prerequisites
 
 1. `superpowers` plugin installed (Claude Code): Generator preloads TDD, verification, debugging skills
-2. Reviewer role definitions: `harness-spec-evaluator.md`, `harness-generator.md`, `harness-evaluator.md`, `harness-retro.md` — ship with this plugin at `plugins/harness-engineering-skills/agents/`; user overrides may live at `~/.claude/agents/harness-*.md`
+2. Reviewer role definitions: `harness-convention-scout.md`, `harness-spec-evaluator.md`, `harness-generator.md`, `harness-evaluator.md`, `harness-retro.md` — ship with this plugin at `plugins/harness-engineering-skills/agents/`; user overrides may live at `~/.claude/agents/harness-*.md`
 3. `python3` on PATH (engine JSON operations)
 4. `git` repository initialized
 5. For Codex-hosted execution: `claude` CLI on PATH for sub-agent dispatch and review-loop
@@ -80,6 +80,7 @@ Read config: `$ENGINE read-config [--max-spec-rounds N] [--max-eval-rounds N] ..
 ```
 Orchestrator (you, the Main Agent — Claude Code or Codex)
 ├── Planning Phase     → YOU are the Planner (direct user interaction)
+│   ├── harness-convention-scout → sub-agent, host-repo convention discovery + Card
 │   ↕ spec-review/     → iterate with Spec Evaluator on checkpoint quality
 ├── Spec Evaluator     → sub-agent, architecture + feasibility
 ├── Generator          → sub-agent (or local in Codex), TDD skill preloaded

@@ -468,7 +468,7 @@ project_type: node | python | go | make | unknown
 
 Sections:
 - **Detected Check Commands**: table with columns Name | Command | Source (e.g., "package.json scripts.test")
-- **Test Framework**: detected framework name (jest, vitest, pytest, etc.) or "unknown"
+- **Test Framework**: detected test framework name or "unknown"
 - **Coverage Tool**: detected tool (c8, istanbul, coverage.py, etc.) or "none detected"
 
 ---

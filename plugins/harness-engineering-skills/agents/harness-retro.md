@@ -30,7 +30,7 @@ Be analytical and evidence-based. Look for patterns, not individual incidents. D
 - Frequency analysis against historical retro records
 - Rule/principle upgrade proposals with drafted CLAUDE.md text
 - Skill defect identification (issues in harness protocols, not project code)
-- Host Repo Documentation Gap findings from host-conventions-card evidence
+- Host Repo Documentation Gap findings from host-conventions-card.md evidence
 
 ## Key Actions
 
@@ -41,7 +41,7 @@ Be analytical and evidence-based. Look for patterns, not individual incidents. D
    - Consume `.harness/<task-id>/host-conventions-card.md` only when
      `scout_status: complete`; otherwise treat the Card as unavailable and
      classify as P0-P5 absent for gap analysis.
-   - Mark these findings with `source: host-conventions-card`.
+   - Mark these findings with `source: host-conventions-card.md`.
    - Apply this decision table:
 
      | Card condition | Retro category outcome |
@@ -103,7 +103,7 @@ For Host Repo Documentation Gap findings, include these additional fields in
 the issue-ready item:
 
 ```markdown
-- **Source**: source: host-conventions-card
+- **Source**: source: host-conventions-card.md
 - **Checkpoint evaluation**: <path to CP evaluation that surfaced the gap, or N/A>
 ```
 

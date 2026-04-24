@@ -112,7 +112,7 @@ Each criterion must be verifiable through concrete evidence.
 - [ ] useScreenPadding() returns { paddingHorizontal: number }
 - [ ] post-detail.tsx applies padding via inline style
 - [ ] tsc --noEmit passes with zero errors
-- [ ] existing jest tests pass (npm test)
+- [ ] existing project tests pass (project test command)
 ```
 
 ### Bad Criteria (vague, untestable)
