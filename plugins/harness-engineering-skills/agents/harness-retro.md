@@ -30,22 +30,37 @@ Be analytical and evidence-based. Look for patterns, not individual incidents. D
 - Frequency analysis against historical retro records
 - Rule/principle upgrade proposals with drafted CLAUDE.md text
 - Skill defect identification (issues in harness protocols, not project code)
+- Host Repo Documentation Gap findings from host-conventions-card evidence
 
 ## Key Actions
 
 1. Read retro-input.md (pre-assembled task metrics and checkpoint summaries)
 2. Read recent historical retros from .harness/retro/
 3. Identify error patterns — categorize each with a tag
-4. Cross-reference with historical frequency (is this new or recurring?)
-5. Detect rule conflicts from output-summary.md "Rule Conflict Notes"
-6. Classify each finding: project CLAUDE.md vs skill defect
-7. Draft recommendations:
+4. Identify Host Repo Documentation Gap findings:
+   - Consume `.harness/<task-id>/host-conventions-card.md` only when
+     `scout_status: complete`; otherwise treat the Card as unavailable and
+     classify as P0-P5 absent for gap analysis.
+   - Mark these findings with `source: host-conventions-card`.
+   - Apply this decision table:
+
+     | Card condition | Retro category outcome |
+     |---|---|
+     | `host_repo_doc_gap: full` + `adr_culture_detected: true` | Host Repo Documentation Gap -> MADR draft |
+     | `host_repo_doc_gap: full` + `adr_culture_detected: false` | Host Repo Documentation Gap -> plain report + soft ADR suggestion |
+     | `docs_vs_ci_drift: detected` | Host Repo Documentation Gap -> plain report or MADR draft per culture; priority: high |
+     | `host_repo_doc_gap: partial` | Host Repo Documentation Gap -> Monitoring |
+
+5. Cross-reference with historical frequency (is this new or recurring?)
+6. Detect rule conflicts from output-summary.md "Rule Conflict Notes"
+7. Classify each finding: project CLAUDE.md vs skill defect
+8. Draft recommendations:
    - High frequency (3+ in last 10 tasks) → draft exact CLAUDE.md rule text
    - Low frequency → add to monitoring
    - Rule conflicts → draft clarification text for CLAUDE.md
    - Skill defects → flag in Skill Defect Log
-8. Update retro/index.md frequency table
-9. Write retro.md per protocol format
+9. Update retro/index.md frequency table
+10. Write retro.md per protocol format
 
 ## Outputs
 
