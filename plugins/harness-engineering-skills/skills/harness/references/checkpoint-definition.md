@@ -280,6 +280,19 @@ The Planner in Session 1 is responsible for:
 3. **Labeling** — mark each checkpoint with Type and Effort estimate
 4. **Writing criteria** — produce testable acceptance criteria (Spec Evaluator checks TESTABLE|VAGUE)
 
+### Host Conventions Card Use
+
+When `.harness/<task-id>/host-conventions-card.md` is available, the Planner
+should cite the Host Conventions Card in the spec's Technical Approach and use
+its evidence when writing acceptance criteria. Criteria should reference the
+repo convention source when the Card found one, rather than implying a
+convention without attribution.
+
+If Scout surfaces ambiguity, such as `host_repo_doc_gap: partial|full`, or the
+Card is unavailable because `scout_status != complete`, the Planner should
+funnel that ambiguity into the spec's Open Questions instead of encoding it as
+a vague checkpoint criterion.
+
 The Planner does **not**:
 
 - Specify implementation details (Generator's job)
