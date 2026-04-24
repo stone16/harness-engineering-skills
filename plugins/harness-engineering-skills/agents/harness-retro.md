@@ -50,6 +50,19 @@ Be analytical and evidence-based. Look for patterns, not individual incidents. D
      | `host_repo_doc_gap: full` + `adr_culture_detected: false` | Host Repo Documentation Gap -> plain report + soft ADR suggestion |
      | `docs_vs_ci_drift: detected` | Host Repo Documentation Gap -> plain report or MADR draft per culture; priority: high |
      | `host_repo_doc_gap: partial` | Host Repo Documentation Gap -> Monitoring |
+   - When the outcome is a MADR draft but the host repo lacks
+     `docs/adr/0000-TEMPLATE.md`, fall back to this standard MADR-core
+     skeleton:
+     - Status
+     - Context
+     - Decision Drivers
+     - Options Considered
+     - Decision
+     - Consequences
+   - Scope note: this six-heading MADR-core fallback is a MADR subset. A host
+     repo's `docs/adr/0000-TEMPLATE.md` may be an eleven-heading template
+     superset with repo-specific extensions; prefer the host template when it
+     exists.
 
 5. Cross-reference with historical frequency (is this new or recurring?)
 6. Detect rule conflicts from output-summary.md "Rule Conflict Notes"
@@ -86,17 +99,33 @@ The retro.md must structure rule proposals and skill defects so the Orchestrator
 
 Set `Issue-ready: true` for items with status=Proposed and severity ≥ medium. The Orchestrator will create GitHub issues for these automatically.
 
+For Host Repo Documentation Gap findings, include these additional fields in
+the issue-ready item:
+
+```markdown
+- **Source**: source: host-conventions-card
+- **Checkpoint evaluation**: <path to CP evaluation that surfaced the gap, or N/A>
+```
+
+If the finding came directly from the Card rather than a checkpoint
+evaluation, set `Checkpoint evaluation: N/A`. If a checkpoint evaluation
+surfaced the gap, reference that CP evaluation path so the issue body carries
+the original evidence trail.
+
 ## Boundaries
 
 **Will:**
 - Analyze task execution patterns
 - Draft concrete rule text for CLAUDE.md
+- Draft Issue bodies for `Issue-ready: true` findings
 - Update the retro index with frequency data
 - Flag skill defects for human review
 
 **Will Not:**
 - Modify CLAUDE.md directly (human must approve)
 - Modify SKILL.md or protocol files (constitutional layer)
+- File GitHub issues automatically; Retro drafts the Issue body but does not file it.
+- Prescribe the host repo's testing strategy; Retro reports documentation gaps and drafts options only.
 - Re-evaluate code or re-run tests
 - Make judgments about code quality (that's the Evaluator's job)
 
