@@ -9,87 +9,52 @@ Stometa 对外公开的 Claude Code 精选技能集 —— 一套我们自己每
 [![Peer: Codex](https://img.shields.io/badge/peer-Codex_CLI-74aa9c)](https://github.com/openai/codex)
 [![Peer: Gemini](https://img.shields.io/badge/peer-Gemini_CLI-4285F4)](https://github.com/google-gemini/gemini-cli)
 
-## 这个仓库是什么
+## 一眼看清
 
-本仓库是 Stometa 私有仓库 `stometa-skillset` 的**公开**伴随版本。我们在内部使用一套更大的技能集；经过打磨验证的技能会被挑选出来，定期以批次的形式发布到这里。目标是把真正能扛住日常工程工作的工作流分享出来，而不是堆砌一堆原型。
+**是什么**：Claude Code 插件，包含两个工程化技能——`review-loop`（跨模型代码审查）和 `harness`（多智能体任务编排）。来自 Stometa 私有仓库 `stometa-skillset`，经内部验证后定期批次对外发布。
 
-第一批发布两个技能：`review-loop`（日常已经在用）和 `harness`（面向复杂任务的多智能体编排）。两者作为同一个 Claude Code 插件安装。
+**做什么**：把"规划 → 生成 → 评审 → 复盘"编排成受控制论（cybernetics）启发的流水线：上下文强制双会话隔离、每个 checkpoint 全新子智能体、引擎脚本持有状态与闸门、跨厂商 peer 评审。
+
+**解决什么**：
+
+| 痛点 | 现象 | Harness 的解法 |
+|------|------|----------------|
+| **上下文漂移** | 规划→编码→评审共用一个越积越长的上下文，模型越写越偏 | 双会话强制隔离 + 每 checkpoint 全新子智能体（eigenbehavior 重置） |
+| **自我盖章** | LLM 给自己的产出下结论，无法客观评判 | 引擎脚本拒绝 session id 重复的自评；evaluator 必须是独立进程 |
+| **回音壁评审** | 同一个模型自审自改，发现不了自身盲区 | `review-loop` 强制 peer 来自不同厂商（Codex / Gemini），终审用全新会话 |
 
 ## 工作流总览
 
-`harness` 是一套受控制论（cybernetics）启发的编排器：**规划与执行被强制拆到两个会话**，上下文不会串味；**每个 checkpoint 都用全新的子智能体**重置 eigenbehavior；一个**引擎脚本**独占状态并强制硬闸门，LLM 无法自我盖章；产 PR 之前必须经过一次**跨模型同行评审**（不同厂商的 CLI），不会基于单模型意见就合入。每次任务的复盘会持久化下来反哺后续任务 —— 这就是这套控制论系统的闭环。
+两个阶段，**上下文严格隔离**。每个阶段内部都有独立子智能体的迭代回路，引擎脚本是唯一的闸门持有者。
 
 ```mermaid
 flowchart TB
-    H((Human))
-    H -->|"harness plan task-id"| HOST
+    YOU(["你"])
 
-    subgraph HOST["Orchestrator host — pick one (symmetric)"]
+    subgraph P["① 规划阶段  ·  Session 1"]
         direction LR
-        CC["Claude Code CLI"]
-        CX["Codex CLI"]
+        PL["规划者"] <-->|"草稿 ↔ 修订"| SE["Spec 评审者\n独立子智能体"]
     end
 
-    HOST --> ENG[["harness-engine.sh<br/>single source of truth<br/>state · phase machine · hard gates"]]
-
-    ENG --> S1
-    subgraph S1["Session 1 — Planning (recommended host: Claude Code)"]
+    subgraph E["② 执行阶段  ·  Session 2（每 Checkpoint 独立）"]
         direction TB
-        PL["Orchestrator = Planner<br/>brainstorm + draft spec.md"]
-        SE["harness-spec-evaluator<br/>fresh sub-agent (Claude)"]
-        OK1["spec.md approved"]
-        PL --> SE
-        SE -->|revise| PL
-        SE -->|approve| OK1
+        GN["生成者\n独立子智能体"] <-->|"实现 ↔ 验证"| EV["评审者\n独立子智能体"]
+        EV -->|"全部 CP 通过"| RL["跨模型同行评审\nCodex ∣ Gemini"]
     end
 
-    S1 -. session ends — planning context discarded .-> S2
+    PR[/"PR 合入"/]
+    RT[("持久化复盘\n经验沉淀 → 下次任务")]
 
-    subgraph S2["Session 2 — Execution (recommended host: Codex)"]
-        direction TB
-        CPL{{"For each Checkpoint NN"}}
-        GEN["harness-generator<br/>fresh sub-agent per CP<br/>TDD + verification preloaded"]
-        EVL{"harness-evaluator<br/>fresh sub-agent per CP<br/>Tier 1 deterministic + Tier 2 LLM"}
-        MORE{"more checkpoints?"}
-        E2E["E2E Evaluator<br/>cross-checkpoint data-flow audit"]
-        RL[["review-loop<br/>cross-model quality gate"]]
-        FV["full-verify<br/>tests · coverage ≥ threshold · lint · types"]
-        PR["Open PR"]
-        RT["harness-retro<br/>fresh sub-agent"]
+    YOU -->|"harness plan"| P
+    P -. "上下文隔离" .-> E
+    RL --> PR --> RT
+    RT -.->|"经验反哺"| YOU
 
-        CPL --> GEN --> EVL
-        EVL -->|FAIL / REVIEW| GEN
-        EVL -->|PASS| MORE
-        MORE -->|yes| CPL
-        MORE -->|no| E2E
-        E2E -->|FAIL| GEN
-        E2E -->|PASS| RL
-        RL --> FV --> PR --> RT
-    end
-
-    subgraph RLSUB["review-loop · cross-LLM peer review"]
-        direction LR
-        PEER["Peer reviewer CLI<br/>codex OR gemini<br/>(allowlisted)"]
-        HEV["Host LLM evaluates<br/>ACCEPT / REJECT / INSIST"]
-        FRESH["Fresh peer session<br/>final approval pass"]
-        DONE["pass-review-loop"]
-
-        PEER -->|FINDING fN| HEV
-        HEV -->|fix + commit| PEER
-        PEER -.CONSENSUS.-> FRESH --> DONE
-    end
-    RL -. invokes .-> RLSUB
-
-    RT --> RD[(".harness/retro/<br/>cross-task learnings<br/>git-tracked, persistent")]
-    RD -. informs future tasks .-> H
-
-    classDef antiDrift stroke:#d97706,stroke-width:2px;
-    class GEN,EVL,SE,RT antiDrift;
-    classDef gate stroke:#059669,stroke-width:2px;
-    class ENG,RL,FV gate;
+    classDef fresh stroke:#d97706,stroke-width:2px
+    class SE,GN,EV fresh
 ```
 
-**图例** —— 橙色描边的节点是**全新子智能体**形成的"防漂移防火墙"；绿色描边的节点是 LLM 无法绕开的**引擎硬闸门**。
+**图例** —— 橙色描边节点：**全新独立子智能体**（防漂移防火墙）；虚线箭头：跨会话/跨任务的信息流，不共享上下文。
 
 ### 角色与宿主对照
 
