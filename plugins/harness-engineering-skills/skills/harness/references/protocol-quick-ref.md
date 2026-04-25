@@ -220,6 +220,111 @@ The `checkpoint_type` field determines the Generator's testing strategy (TDD for
 
 ---
 
+## host-conventions-card.md
+
+Planner-side Convention Scout output. This artifact records what the host
+repository says about its own verification conventions before a spec is
+drafted. It is the single source of truth for Scout, Spec Evaluator, and Retro
+consumers.
+
+```yaml
+---
+task_id: <matches spec>
+scout_run_at: <ISO-8601 timestamp>
+scout_status: complete | partial | failed
+adr_culture_detected: <boolean>
+highest_authority_source: P0 | P1 | P2 | P3 | P4 | P5 | P6 | P7 | P8 | P9 | none
+host_repo_doc_gap: none | partial | full
+docs_vs_ci_drift: none | detected
+---
+```
+
+Canonical probe priority tiers:
+
+| Tier | Authority surface | Scout probe |
+|------|-------------------|-------------|
+| P0 | Architectural decision records | Repository decision records such as ADR or decision-log directories. |
+| P1 | Repository-specific agent or skill instructions | Local assistant, automation, or skill guidance that governs how work is done in this repo. |
+| P2 | Always-on contributor documentation | Root or docs contributor guides that every change author is expected to read. |
+| P3 | Dedicated verification documentation | Testing, verification, quality, or review docs with explicit project practice. |
+| P4 | Development workflow documentation | Process, release, local setup, or maintenance docs that mention verification expectations. |
+| P5 | Human-facing task templates | Issue, pull request, or change templates that ask authors for verification evidence. |
+| P6 | Declared project commands | Manifest, task-runner, or command catalog entries that name verification commands. |
+| P7 | Repository helper scripts | Checked-in helper scripts whose names or help text describe verification behavior. |
+| P8 | Continuous integration reality | CI or automation configuration that runs verification commands. |
+| P9 | Inferred executable behavior | Test directories, fixtures, or executable artifacts that imply practice without documenting it. |
+
+Ordering rationale: authority decays while specificity increases. P0-P3 are
+the clearest documentation surfaces; P8-P9 can prove what runs but cannot by
+themselves explain the repository's intended convention.
+
+Body sections:
+
+- **Per-priority findings**: table with one row per P0-P9 tier. Each row
+  records `status` (`FOUND` or `NOT_FOUND`), `path`, and a short sanitized
+  `extract`.
+- **Contradictions**: any conflict across tiers, especially documented
+  guidance that disagrees with CI reality.
+- **Gap Classification**: rationale for `host_repo_doc_gap` and
+  `docs_vs_ci_drift`.
+- **Evidence for Retro**: issue-ready facts Retro can cite without re-scanning
+  the host repo.
+
+`host_repo_doc_gap` values:
+
+- `none`: P0-P3 contain substantive convention guidance.
+- `partial`: P0-P3 are absent or thin, but P4-P6 contain useful guidance; or
+  P0-P3 exist but only point elsewhere.
+- `full`: P0-P6 are absent or substantively empty, with signal only from
+  P7-P9 or no signal at all.
+
+Minimal filled example:
+
+```markdown
+---
+task_id: example-task
+scout_run_at: 2026-04-24T09:00:00+08:00
+scout_status: complete
+adr_culture_detected: true
+highest_authority_source: P0
+host_repo_doc_gap: partial
+docs_vs_ci_drift: none
+---
+
+## Per-priority findings
+
+| Tier | Status | Path | Extract |
+|------|--------|------|---------|
+| P0 | FOUND | docs/adr/0001-example.md | "Decisions are recorded as ADRs." |
+| P1 | NOT_FOUND | N/A | No repository-specific assistant or skill guidance found. |
+| P2 | FOUND | README.md | "Run the verification command before review." |
+| P3 | NOT_FOUND | N/A | No dedicated verification guide found. |
+| P4 | NOT_FOUND | N/A | No development workflow doc found. |
+| P5 | NOT_FOUND | N/A | No change template with verification prompt found. |
+| P6 | FOUND | manifest file | Verification command is declared. |
+| P7 | NOT_FOUND | N/A | No helper script guidance found. |
+| P8 | FOUND | automation config | Verification command runs on change. |
+| P9 | FOUND | executable artifacts | Verification artifacts are present. |
+
+## Contradictions
+
+None.
+
+## Gap Classification
+
+`host_repo_doc_gap: partial` because high-authority decision guidance exists,
+but dedicated verification documentation is absent. Other valid values are
+`none` when P0-P3 are substantive and `full` when P0-P6 are absent or empty.
+
+## Evidence for Retro
+
+- ADR culture detected from P0.
+- Dedicated verification guide missing at P3.
+- CI drift not detected.
+```
+
+---
+
 ## output-summary.md (per iteration)
 
 ```yaml
@@ -363,7 +468,7 @@ project_type: node | python | go | make | unknown
 
 Sections:
 - **Detected Check Commands**: table with columns Name | Command | Source (e.g., "package.json scripts.test")
-- **Test Framework**: detected framework name (jest, vitest, pytest, etc.) or "unknown"
+- **Test Framework**: detected test framework name or "unknown"
 - **Coverage Tool**: detected tool (c8, istanbul, coverage.py, etc.) or "none detected"
 
 ---

@@ -6,7 +6,7 @@ Use this reference when Codex is the orchestrator. The pipeline (Planning → Ch
 
 - Codex acts as the Orchestrator and local implementer (Generator role within checkpoints).
 - `harness-engine.sh` remains the single source of truth for task state, checkpoints, and phase gates — same engine, same commands, same phase machine.
-- Sub-agent roles (Spec Evaluator, Evaluator, Retro) are dispatched via `claude-agent-invoke.sh` to a Claude CLI process. Any CLI that accepts a prompt and returns structured output can fill these roles.
+- Sub-agent roles (Spec Evaluator, Convention Scout, Evaluator, Retro) are dispatched via `claude-agent-invoke.sh` to a Claude CLI process. Any CLI that accepts a prompt and returns structured output can fill these roles.
 - `review-loop` can use any available peer (`codex`, `claude`, or `gemini`) — the choice is a config option, not an architectural constraint.
 
 > **Symmetry**: The role assignments are interchangeable. Just as Codex can host with Claude sub-agents, Claude Code can host with Codex as the review-loop peer. This document covers the Codex-as-host configuration.
@@ -36,10 +36,17 @@ CLAUDE_AGENT="$HARNESS_DIR/scripts/claude-agent-invoke.sh"
 
 1. Clarify requirements directly with the user.
    - If a dedicated brainstorming skill is unavailable in Codex, do the questioning and design synthesis manually.
-2. Write `.harness/<task-id>/spec.md` in the normal Harness format. **After this step,
+2. At brainstorm start, fork the Scout agent with `--agent
+   harness-convention-scout`; it writes
+   `.harness/<task-id>/host-conventions-card.md` for Planner consumption.
+3. At spec drafting start, strict-block for the Scout result using the same
+   3-minute / 180-second timeout defined in [planning-protocol.md](planning-protocol.md).
+   On timeout, crash, or `scout_status != complete`, proceed and record
+   `Host Conventions Card: unavailable`.
+4. Write `.harness/<task-id>/spec.md` in the normal Harness format. **After this step,
    the remainder of planning is autonomous** — see the "Post-Brainstorming Autonomy"
    section in [planning-protocol.md](planning-protocol.md).
-3. For each spec-review round, invoke Claude as the spec reviewer (fresh each round):
+5. For each spec-review round, invoke Claude as the spec reviewer (fresh each round):
 
 ```bash
 "$CLAUDE_AGENT" \
@@ -48,7 +55,7 @@ CLAUDE_AGENT="$HARNESS_DIR/scripts/claude-agent-invoke.sh"
   --output-file ".harness/$TASK_ID/spec-review/round-${ROUND}-spec-review.md"
 ```
 
-4. Apply accepted spec changes locally in Codex and write `round-N-planner-response.md`
+6. Apply accepted spec changes locally in Codex and write `round-N-planner-response.md`
    documenting accepted/rejected concerns with rationale. Repeat autonomously until
    `approve` verdict or `max_spec_rounds` is exhausted. Escalate to the user only
    in the scenarios enumerated in `planning-protocol.md`'s `Post-Brainstorming

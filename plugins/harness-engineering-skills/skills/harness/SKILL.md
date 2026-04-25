@@ -1,6 +1,6 @@
 ---
 name: harness
-version: 0.14.0
+version: 0.15.0
 description: |
   Cybernetics-based multi-agent orchestration for complex tasks. Coordinates a
   Planner → Generator → Evaluator → Retro pipeline with clean-context sub-agents,
@@ -16,7 +16,7 @@ description: |
 
 # Harness — Multi-Agent Orchestration
 
-Orchestrate complex tasks through Planning → Generation ��� Evaluation → Retro.
+Orchestrate complex tasks through Planning -> Generation -> Evaluation -> Retro.
 Fresh sub-agents per checkpoint prevent drift. Retro accumulates learning across tasks.
 
 ## Recommended Workflow
@@ -35,13 +35,13 @@ Session 2 (Codex)       → Execute checkpoints → Evaluate → E2E → Full-ve
 ## Prerequisites
 
 1. `superpowers` plugin installed (Claude Code): Generator preloads TDD, verification, debugging skills
-2. Reviewer role definitions: `harness-spec-evaluator.md`, `harness-generator.md`, `harness-evaluator.md`, `harness-retro.md` — ship with this plugin at `plugins/harness-engineering-skills/agents/`; user overrides may live at `~/.claude/agents/harness-*.md`
+2. Reviewer role definitions: `harness-convention-scout.md`, `harness-spec-evaluator.md`, `harness-generator.md`, `harness-evaluator.md`, `harness-retro.md` — ship with this plugin at `plugins/harness-engineering-skills/agents/`; user overrides may live at `~/.claude/agents/harness-*.md`
 3. `python3` on PATH (engine JSON operations)
 4. `git` repository initialized
 5. For Codex-hosted execution: `claude` CLI on PATH for sub-agent dispatch and review-loop
 
 Verify (Claude Code): `claude plugin list | grep superpowers`
-Verify (review roles): `ls ~/.claude/plugins/**/plugins/harness-engineering-skills/agents/harness-*.md 2>/dev/null || ls plugins/harness-engineering-skills/agents/harness-*.md` (plugin-bundled) and `ls ~/.claude/agents/harness-*.md 2>/dev/null` (optional user override)
+Verify (review roles): `{ find ~/.claude/plugins -path '*/plugins/harness-engineering-skills/agents/harness-*.md' -type f 2>/dev/null; ls plugins/harness-engineering-skills/agents/harness-*.md 2>/dev/null; ls ~/.claude/agents/harness-*.md 2>/dev/null; } | sort -u`
 Verify (Codex): `codex --version && claude --version`
 
 ## Engine Script
@@ -80,6 +80,7 @@ Read config: `$ENGINE read-config [--max-spec-rounds N] [--max-eval-rounds N] ..
 ```
 Orchestrator (you, the Main Agent — Claude Code or Codex)
 ├── Planning Phase     → YOU are the Planner (direct user interaction)
+│   ├── harness-convention-scout → sub-agent, host-repo convention discovery + Card
 │   ↕ spec-review/     → iterate with Spec Evaluator on checkpoint quality
 ├── Spec Evaluator     → sub-agent, architecture + feasibility
 ├── Generator          → sub-agent (or local in Codex), TDD skill preloaded
@@ -100,36 +101,36 @@ Orchestrator (you, the Main Agent — Claude Code or Codex)
 
 ```
 .harness/
-├── config.json                         # Project config (git-tracked)
-├── <task-id>/                          # Per-task (gitignored)
-��   ├── spec.md
-│   ├── git-state.json
-│   ├── spec-review/
-│   │   ├��─ round-N-spec-review.md
-│   │   ├── round-N-planner-response.md
-│   │   └─��� status.md
-│   ├── checkpoints/
-│   │   └── NN/
-│   │       ├── context.md
-│   │       ├── iter-N/
-���   │       │   ├── output-summary.md
-│   │       │   ├── evaluation.md
-│   │       │   ├── evaluator-session-id.txt
-│   │       │   └── evidence/
-│   │       └── status.md
-│   ├── e2e/
-│   │   ├── iter-N/ {context.md, e2e-report.md, evidence/}
-│   ���   └── status.md
-│   ├── full-verify/
-│   │   ├── discovery.md
-│   ��   ├── iter-N/
-│   │   │   ├── verification-report.md
-│   │   │   └── evidence/
-│   │   └── status.md
-│   └── retro-input.md
-└── retro/                              # Persistent (git-tracked)
-    ├���─ index.md
-    └── <date>-<task-id>.md
+|-- config.json                         # Project config (git-tracked)
+|-- <task-id>/                          # Per-task (gitignored)
+|   |-- spec.md
+|   |-- git-state.json
+|   |-- spec-review/
+|   |   |-- round-N-spec-review.md
+|   |   |-- round-N-planner-response.md
+|   |   `-- status.md
+|   |-- checkpoints/
+|   |   `-- NN/
+|   |       |-- context.md
+|   |       |-- iter-N/
+|   |       |   |-- output-summary.md
+|   |       |   |-- evaluation.md
+|   |       |   |-- evaluator-session-id.txt
+|   |       |   `-- evidence/
+|   |       `-- status.md
+|   |-- e2e/
+|   |   |-- iter-N/ {context.md, e2e-report.md, evidence/}
+|   |   `-- status.md
+|   |-- full-verify/
+|   |   |-- discovery.md
+|   |   |-- iter-N/
+|   |   |   |-- verification-report.md
+|   |   |   `-- evidence/
+|   |   `-- status.md
+|   `-- retro-input.md
+`-- retro/                              # Persistent (git-tracked)
+    |-- index.md
+    `-- <date>-<task-id>.md
 ```
 
 Gitignore entries are auto-added by `$ENGINE init`.
