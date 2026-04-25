@@ -9,87 +9,52 @@ Stometa's public curated Claude Code skillset — a small, opinionated set of sk
 [![Peer: Codex](https://img.shields.io/badge/peer-Codex_CLI-74aa9c)](https://github.com/openai/codex)
 [![Peer: Gemini](https://img.shields.io/badge/peer-Gemini_CLI-4285F4)](https://github.com/google-gemini/gemini-cli)
 
-## Why this repo
+## At a glance
 
-This is the **public** companion to Stometa's private `stometa-skillset`. We dogfood a larger internal skillset day-to-day; selected skills are extracted, polished, and published here in batches. The goal is to share the workflows that actually hold up under real engineering work — not a pile of prototypes.
+**What it is**: A Claude Code plugin with two engineering skills — `review-loop` (cross-model code review) and `harness` (multi-agent task orchestration). Published from Stometa's private `stometa-skillset` in batches, after internal validation.
 
-The first batch ships two skills: `review-loop` (already proven in daily use) and `harness` (multi-agent orchestration for larger tasks). Both are installable as a single Claude Code plugin.
+**What it does**: Coordinates a Plan → Generate → Evaluate → Retro pipeline with hard, engine-enforced constraints: two isolated sessions, a fresh sub-agent per checkpoint, an engine script as the sole gatekeeper, and a cross-vendor peer review before any PR lands.
+
+**What problems it solves**:
+
+| Failure mode | How it shows up | What Harness does |
+|---|---|---|
+| **Context drift** | Planning, coding, and review share one growing context — the model drifts further with each turn | Two-session split + fresh sub-agent per checkpoint (eigenbehavior reset) |
+| **Self-certification** | The LLM that wrote the code also judges whether it passes | Engine script rejects any `pass-checkpoint` where the evaluator session id matches a prior checkpoint in the same task |
+| **Echo-chamber review** | The same model reviews its own work and misses its own blind spots | `review-loop` enforces a different-vendor peer (Codex or Gemini) and runs a fresh-session final approval before closing |
 
 ## Workflow at a glance
 
-`harness` is a cybernetics-inspired orchestrator: planning and execution live in **separate sessions** so context cannot leak; every checkpoint runs against a **fresh sub-agent** to reset eigenbehavior; an **engine script** owns state and enforces hard gates so the LLM cannot self-certify; and a **cross-model peer** (a different vendor's CLI) reviews before PR so you never merge on a single model's opinion. Persistent retro feeds learnings back into future tasks — that's the closing loop of the cybernetic system.
+Two phases, **hard context boundary** between them. Each phase contains its own fresh-sub-agent iteration loop. The engine script is the only entity that can advance phase state — the LLM cannot self-certify.
 
 ```mermaid
 flowchart TB
-    H((Human))
-    H -->|"harness plan task-id"| HOST
+    YOU(["You"])
 
-    subgraph HOST["Orchestrator host — pick one (symmetric)"]
+    subgraph P["① Plan  ·  Session 1"]
         direction LR
-        CC["Claude Code CLI"]
-        CX["Codex CLI"]
+        PL["Planner"] <-->|"draft ↔ revise"| SE["Spec Evaluator\nfresh sub-agent"]
     end
 
-    HOST --> ENG[["harness-engine.sh<br/>single source of truth<br/>state · phase machine · hard gates"]]
-
-    ENG --> S1
-    subgraph S1["Session 1 — Planning (recommended host: Claude Code)"]
+    subgraph E["② Execute  ·  Session 2 (one fresh sub-agent per checkpoint)"]
         direction TB
-        PL["Orchestrator = Planner<br/>brainstorm + draft spec.md"]
-        SE["harness-spec-evaluator<br/>fresh sub-agent (Claude)"]
-        OK1["spec.md approved"]
-        PL --> SE
-        SE -->|revise| PL
-        SE -->|approve| OK1
+        GN["Generator\nfresh sub-agent"] <-->|"implement ↔ verify"| EV["Evaluator\nfresh sub-agent"]
+        EV -->|"all CPs pass"| RL["Cross-model peer review\nCodex ∣ Gemini"]
     end
 
-    S1 -. session ends — planning context discarded .-> S2
+    PR[/"Open PR"/]
+    RT[("Persistent retro\nlearnings → next task")]
 
-    subgraph S2["Session 2 — Execution (recommended host: Codex)"]
-        direction TB
-        CPL{{"For each Checkpoint NN"}}
-        GEN["harness-generator<br/>fresh sub-agent per CP<br/>TDD + verification preloaded"]
-        EVL{"harness-evaluator<br/>fresh sub-agent per CP<br/>Tier 1 deterministic + Tier 2 LLM"}
-        MORE{"more checkpoints?"}
-        E2E["E2E Evaluator<br/>cross-checkpoint data-flow audit"]
-        RL[["review-loop<br/>cross-model quality gate"]]
-        FV["full-verify<br/>tests · coverage ≥ threshold · lint · types"]
-        PR["Open PR"]
-        RT["harness-retro<br/>fresh sub-agent"]
+    YOU -->|"harness plan"| P
+    P -. "context isolation" .-> E
+    RL --> PR --> RT
+    RT -.->|"accumulated learnings"| YOU
 
-        CPL --> GEN --> EVL
-        EVL -->|FAIL / REVIEW| GEN
-        EVL -->|PASS| MORE
-        MORE -->|yes| CPL
-        MORE -->|no| E2E
-        E2E -->|FAIL| GEN
-        E2E -->|PASS| RL
-        RL --> FV --> PR --> RT
-    end
-
-    subgraph RLSUB["review-loop · cross-LLM peer review"]
-        direction LR
-        PEER["Peer reviewer CLI<br/>codex OR gemini<br/>(allowlisted)"]
-        HEV["Host LLM evaluates<br/>ACCEPT / REJECT / INSIST"]
-        FRESH["Fresh peer session<br/>final approval pass"]
-        DONE["pass-review-loop"]
-
-        PEER -->|FINDING fN| HEV
-        HEV -->|fix + commit| PEER
-        PEER -.CONSENSUS.-> FRESH --> DONE
-    end
-    RL -. invokes .-> RLSUB
-
-    RT --> RD[(".harness/retro/<br/>cross-task learnings<br/>git-tracked, persistent")]
-    RD -. informs future tasks .-> H
-
-    classDef antiDrift stroke:#d97706,stroke-width:2px;
-    class GEN,EVL,SE,RT antiDrift;
-    classDef gate stroke:#059669,stroke-width:2px;
-    class ENG,RL,FV gate;
+    classDef fresh stroke:#d97706,stroke-width:2px
+    class SE,GN,EV fresh
 ```
 
-**Legend** — orange-bordered nodes are the **fresh-sub-agent** drift firewalls; green-bordered nodes are the **engine-enforced gates** that the LLM cannot bypass.
+**Legend** — orange-bordered nodes are **fresh independent sub-agents** (drift firewall); dashed arrows are cross-session / cross-task information flows that carry no shared context.
 
 ### Hosts and roles
 
