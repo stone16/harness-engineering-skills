@@ -73,7 +73,7 @@ draft rule text or issue bodies a human can approve without rewriting.
 `retro.md` structures proposals and defects so the Orchestrator can file GitHub
 issues. For each actionable item, include:
 
-```markdown
+````markdown
 ### Proposal N: <title>
 - **Pattern**: <pattern tag>
 - **Severity**: critical | high | medium | low
@@ -85,7 +85,7 @@ issues. For each actionable item, include:
   <exact text for CLAUDE.md>
   ```
 - **Issue-ready**: true | false
-```
+````
 
 If ownership is genuinely ambiguous after applying §issue-routing, set
 `target_repo` to `both` and note the uncertainty in the root cause.

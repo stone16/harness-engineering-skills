@@ -542,11 +542,12 @@ Every `Issue-ready: true` retro item MUST include this markdown body field:
 Canonical harness target shell default:
 
 ```bash
-HARNESS_TARGET_REPO="${HARNESS_TARGET_REPO:-https://github.com/stone16/harness-engineering-skills}"
+HARNESS_TARGET_REPO="${HARNESS_TARGET_REPO:-stone16/harness-engineering-skills}"
 ```
 
-Maintain this literal in sync with this repository's public `origin` remote,
-normalized by removing any optional `.git` suffix. Verify it with
+Maintain this `owner/repo` literal in sync with this repository's public
+`origin` remote, normalized by removing any protocol and optional `.git` suffix.
+Verify it with
 `scripts/check-harness-target-repo.sh` after repository moves or release prep.
 
 Classification:
@@ -579,7 +580,7 @@ Filed Issues record formats:
 - `- Proposal N (skipped, host repo unresolved): <title>`
 - `- Proposal N (skipped, invalid target_repo='<raw>'): <title>`
 - `- Proposal N (skipped, <host|harness> create failed): <title>`
-- `- Proposal N (skipped, mktemp failed): <title>`
+- `- Proposal N (both, cross-link skipped, mktemp failed): <harness-url> | <host-url>`
 - `- Proposal N (both, partial create): <harness-url|no-harness-url> | <host-url|no-host-url>`
 - `- Proposal N (both, partial edit harness=<ok|failed> host=<ok|failed>): <harness-url> | <host-url>`
 

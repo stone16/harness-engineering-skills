@@ -12,7 +12,10 @@ normalize_repo_url() {
   local url="$1"
   case "$url" in
     git@github.com:*)
-      url="https://github.com/${url#git@github.com:}"
+      url="${url#git@github.com:}"
+      ;;
+    https://github.com/*)
+      url="${url#https://github.com/}"
       ;;
   esac
   printf '%s\n' "${url%.git}"
@@ -27,7 +30,8 @@ remote_url="$(normalize_repo_url "$remote_url")"
 
 quick_ref_url="$(
   grep -m1 '^HARNESS_TARGET_REPO=' "$quick_ref" |
-    sed 's/^HARNESS_TARGET_REPO="${HARNESS_TARGET_REPO:-//; s/}"$//'
+    sed 's/^HARNESS_TARGET_REPO="${HARNESS_TARGET_REPO:-//; s/}"$//' ||
+    true
 )"
 
 if [[ -z "$quick_ref_url" ]]; then
