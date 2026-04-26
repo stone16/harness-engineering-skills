@@ -570,6 +570,23 @@ retro's Filed Issues record uses one line for the pair:
 - Proposal N (both): <harness-url> | <host-url>
 ```
 
+Filed Issues record formats:
+
+- `- Proposal N (host): <host-url>`
+- `- Proposal N (harness): <harness-url>`
+- `- Proposal N (both): <harness-url> | <host-url>`
+- `- Proposal N (skipped): gh CLI unavailable`
+- `- Proposal N (skipped, host repo unresolved): <title>`
+- `- Proposal N (skipped, invalid target_repo='<raw>'): <title>`
+- `- Proposal N (skipped, <host|harness> create failed): <title>`
+- `- Proposal N (skipped, mktemp failed): <title>`
+- `- Proposal N (both, partial create): <harness-url|no-harness-url> | <host-url|no-host-url>`
+- `- Proposal N (both, partial edit harness=<ok|failed> host=<ok|failed>): <harness-url> | <host-url>`
+
+Records may include a `label not applied` or `labels harness=<true|false>
+host=<true|false>` note inside the parenthesized status when issue creation
+succeeds but the best-effort `harness-retro` label is unavailable.
+
 ---
 
 ## retro.md (PERSISTENT, in .harness/retro/)

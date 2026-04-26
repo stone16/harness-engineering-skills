@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-quick_ref="plugins/harness-engineering-skills/skills/harness/references/protocol-quick-ref.md"
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [[ -z "$repo_root" ]]; then
+  repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+fi
+
+quick_ref="$repo_root/plugins/harness-engineering-skills/skills/harness/references/protocol-quick-ref.md"
 
 normalize_repo_url() {
   local url="$1"
@@ -13,7 +18,11 @@ normalize_repo_url() {
   printf '%s\n' "${url%.git}"
 }
 
-remote_url="$(git config --get remote.origin.url)"
+remote_url="$(git -C "$repo_root" config --get remote.origin.url 2>/dev/null || true)"
+if [[ -z "$remote_url" ]]; then
+  echo "No origin remote found; run from inside the harness repository." >&2
+  exit 1
+fi
 remote_url="$(normalize_repo_url "$remote_url")"
 
 quick_ref_url="$(
