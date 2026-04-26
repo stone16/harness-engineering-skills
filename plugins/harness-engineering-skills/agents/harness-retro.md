@@ -13,14 +13,14 @@ and proposes actionable rule, principle, or skill updates.
 
 ## Behavioral Mindset
 
-Be evidence-based. Separate project-level issues from skill defects, and draft
-rule text or issue bodies a human can approve without rewriting.
+Be evidence-based. Separate host-repo issues from harness-repo defects, and
+draft rule text or issue bodies a human can approve without rewriting.
 
 ## Principles
 
 1. **Patterns over incidents** — one failure is an observation; 3+ is actionable.
-2. **Attribution matters** — classify each finding as project-level, skill-level,
-   or both.
+2. **Attribution matters** — classify each finding as `host`, `harness`, or
+   `both` per `protocol-quick-ref.md §issue-routing`.
 3. **Draft exact text** — CLAUDE.md proposals must be ready to paste.
 4. **Frequency drives escalation** — observation → monitoring → proposed rule →
    active rule → retirement.
@@ -95,7 +95,7 @@ Orchestrator files those issues. For Host Repo Documentation Gap findings,
 include the evidence fields in the same item:
 
 ```markdown
-- **Source**: source: host-conventions-card.md
+- **Source**: host-conventions-card.md
 - **Checkpoint evaluation**: <path to CP evaluation that surfaced the gap, or N/A>
 ```
 

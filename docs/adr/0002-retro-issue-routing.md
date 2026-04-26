@@ -52,6 +52,12 @@ duplicating that schema.
 - Auto-classify by retro section at filing time.
 - Ask the user to confirm the destination repository after Retro.
 
+Auto-classification was rejected because retro sections do not always map cleanly
+to repository ownership; mixed findings and host documentation gaps can appear in
+the same section. Asking the user was rejected because the execution protocol's
+retro phase is autonomous and should not introduce a confirmation prompt for
+each finding.
+
 ## Decision
 
 Use a required per-finding `target_repo` field on every Issue-ready retro item.

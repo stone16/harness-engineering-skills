@@ -545,8 +545,8 @@ Canonical harness target shell default:
 HARNESS_TARGET_REPO="${HARNESS_TARGET_REPO:-https://github.com/stone16/harness-engineering-skills}"
 ```
 
-Maintain this literal in sync with this repository's public `origin` remote:
-`https://github.com/stone16/harness-engineering-skills.git`.
+Maintain this literal in sync with this repository's public `origin` remote,
+normalized by removing any optional `.git` suffix.
 
 Classification:
 
