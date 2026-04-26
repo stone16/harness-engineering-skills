@@ -19,20 +19,30 @@ PROPOSAL_INDEX="$(sanitize_line "${PROPOSAL_INDEX:?Set proposal number}")"
 TITLE="$(sanitize_line "${TITLE:?Set per-proposal issue title}")"
 : "${BODY_FILE:?Set per-proposal body file path}"
 : "${FILED_ISSUES_FILE:?Set retro index file path for Filed Issues updates}"
-: "${HARNESS_TARGET_REPO:?Set HARNESS_TARGET_REPO from protocol-quick-ref.md section issue-routing}"
+HARNESS_TARGET_REPO="${HARNESS_TARGET_REPO:-stone16/harness-engineering-skills}"
+[[ -r "$BODY_FILE" ]] || {
+  echo "BODY_FILE not readable: $BODY_FILE" >&2
+  exit 1
+}
 
 ensure_filed_issues_section() {
   grep -qxF '## Filed Issues' "$FILED_ISSUES_FILE" 2>/dev/null && return 0
   if [[ -s "$FILED_ISSUES_FILE" ]]; then
-    printf '\n## Filed Issues\n' >> "$FILED_ISSUES_FILE"
+    printf '\n## Filed Issues\n' >> "$FILED_ISSUES_FILE" || return 1
   else
-    printf '## Filed Issues\n' >> "$FILED_ISSUES_FILE"
+    printf '## Filed Issues\n' >> "$FILED_ISSUES_FILE" || return 1
   fi
 }
 
 record_filed_issue() {
-  ensure_filed_issues_section
-  printf '%s\n' "$1" >> "$FILED_ISSUES_FILE"
+  ensure_filed_issues_section || {
+    echo "Unable to ensure Filed Issues section in $FILED_ISSUES_FILE" >&2
+    exit 1
+  }
+  printf '%s\n' "$1" >> "$FILED_ISSUES_FILE" || {
+    echo "Unable to write Filed Issues record to $FILED_ISSUES_FILE" >&2
+    exit 1
+  }
 }
 
 ensure_host_target_repo() {
@@ -103,7 +113,7 @@ file_harness_when_host_unresolved() {
     return 0
   fi
   label_note=""
-  [[ "$harness_label" != "true" ]] && label_note=", labels harness=false host=false"
+  [[ "$harness_label" != "true" ]] && label_note=", labels harness=false"
   record_filed_issue "- Proposal $PROPOSAL_INDEX (both$label_note, host repo unresolved): $harness_url | no-host-url"
 }
 

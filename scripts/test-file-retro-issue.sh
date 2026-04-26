@@ -28,6 +28,7 @@ if [[ "$1 $2" == "label create" ]]; then
   exit 0
 fi
 if [[ "$1 $2" == "issue create" ]]; then
+  [[ "$mode" == "both_create_fail" ]] && exit 1
   if [[ " $* " == *" --repo stone16/harness-engineering-skills "* ]]; then
     [[ "$mode" == "harness_create_fail" ]] && exit 1
     printf 'https://github.com/stone16/harness-engineering-skills/issues/10\n'
@@ -68,8 +69,12 @@ run_case "invalid" "invalid"
 run_case "both" "bothNoHost" "host_unresolved"
 run_case "host" "hostCreateFail" "host_create_fail"
 run_case "both" "partialCreate" "harness_create_fail"
+run_case "both" "partialHostCreate" "host_create_fail"
 run_case "both" "partialEdit" "partial_edit"
 run_case "host" "labelFail" "label_fail"
+run_case "harness" "labelFailHarness" "label_fail"
+run_case "both" "labelFailBoth" "label_fail"
+run_case "both" "bothCreateFail" "both_create_fail"
 
 TMPDIR="$body" run_case "both" "mktempFail"
 
@@ -100,8 +105,12 @@ cat > "$expected" <<'EOF'
 - Proposal bothNoHost (both, host repo unresolved): https://github.com/stone16/harness-engineering-skills/issues/10 | no-host-url
 - Proposal hostCreateFail (skipped, host create failed): Title hostCreateFail
 - Proposal partialCreate (both, partial create): no-harness-url | https://github.com/host/repo/issues/20
+- Proposal partialHostCreate (both, partial create): https://github.com/stone16/harness-engineering-skills/issues/10 | no-host-url
 - Proposal partialEdit (both, partial edit harness=failed host=ok): https://github.com/stone16/harness-engineering-skills/issues/10 | https://github.com/host/repo/issues/20
 - Proposal labelFail (host, label not applied): https://github.com/host/repo/issues/20
+- Proposal labelFailHarness (harness, label not applied): https://github.com/stone16/harness-engineering-skills/issues/10
+- Proposal labelFailBoth (both, labels harness=false host=false): https://github.com/stone16/harness-engineering-skills/issues/10 | https://github.com/host/repo/issues/20
+- Proposal bothCreateFail (both, partial create): no-harness-url | no-host-url
 - Proposal mktempFail (both, cross-link skipped, mktemp failed): https://github.com/stone16/harness-engineering-skills/issues/10 | https://github.com/host/repo/issues/20
 - Proposal missing (skipped, invalid target_repo=''): Title missing
 - Proposal nogh (skipped): gh CLI unavailable

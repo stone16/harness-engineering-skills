@@ -7,6 +7,10 @@ if [[ -z "$repo_root" ]]; then
 fi
 
 quick_ref="$repo_root/plugins/harness-engineering-skills/skills/harness/references/protocol-quick-ref.md"
+if [[ ! -f "$quick_ref" ]]; then
+  echo "Quick-ref not found: $quick_ref" >&2
+  exit 1
+fi
 
 normalize_repo_url() {
   local url="$1"

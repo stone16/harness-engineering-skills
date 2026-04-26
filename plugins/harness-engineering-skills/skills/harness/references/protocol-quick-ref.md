@@ -563,6 +563,11 @@ Classification:
 Precedence: the explicit `target_repo` field is required. Missing or invalid
 values are filing errors to record in Filed Issues, not defaults to `host`.
 
+Extraction: parse the markdown body field with
+`^- \*\*target_repo\*\*:[[:space:]]*(.*)$`, trim surrounding whitespace,
+lowercase the value, and accept only `harness`, `host`, or `both`. Any other
+value, including an empty match, is an invalid `target_repo`.
+
 For `target_repo: both`, file one issue in `HARNESS_TARGET_REPO` and one in
 the host repo, then update both bodies with `Cross-filed: <other_url>`. The
 retro's Filed Issues record uses one line for the pair:
