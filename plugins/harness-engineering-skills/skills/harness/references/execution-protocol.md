@@ -210,10 +210,11 @@ One match → load. Multiple → ask user. None → inform user.
 
 11. Auto-create GitHub issues from retro findings (proceed automatically):
     → Parse Issue-ready items; read required `target_repo` (`protocol-quick-ref.md §issue-routing`)
-    → Missing/invalid `target_repo`: list titles, surface to user, skip those items; never default to `host`
-    → Route `host` with plain `gh issue create`; route `harness` with `gh issue create --repo https://github.com/stone16/harness-engineering-skills`
+    → Missing/invalid `target_repo`: record `- Proposal N (skipped, invalid target_repo): <title>` in "## Filed Issues"; never default to `host`
+    → Route `host` with plain `gh issue create`; route `harness` with `gh issue create --repo "$HARNESS_TARGET_REPO"`
     → Route `both`: create both, edit both bodies with `Cross-filed: <other_url>`, record `- Proposal N (both): <harness-url> | <host-url>`
-    → On any of the four `both` create/edit calls failing, record partial state in "## Filed Issues" and continue; skip all filing if `gh` is unavailable
+    → Best-effort ensure/apply label `harness-retro`; label failures must not block issue creation
+    → On unavailable `gh` or any `both` create/edit failure, record skip/partial state in "## Filed Issues" and continue
 
 12. $ENGINE complete --task-id <id>
     → Report to user (this is the ONLY time you summarize results to the user)
@@ -223,10 +224,49 @@ Step 11 concrete routing snippet:
 
 ```bash
 set -uo pipefail
-HOST_URL=$(gh issue create --title "$TITLE" --body-file "$BODY_FILE" --label "harness-retro")
-HARNESS_URL=$(gh issue create --repo https://github.com/stone16/harness-engineering-skills --title "$TITLE" --body-file "$BODY_FILE" --label "harness-retro")
-gh issue edit "$HARNESS_URL" --body-file <(printf '%s\nCross-filed: %s\n' "$(cat "$BODY_FILE")" "$HOST_URL")
-gh issue edit "$HOST_URL" --body-file <(printf '%s\nCross-filed: %s\n' "$(cat "$BODY_FILE")" "$HARNESS_URL")
+: "${HARNESS_TARGET_REPO:?Set HARNESS_TARGET_REPO from protocol-quick-ref.md §issue-routing}"
+: "${FILED_ISSUES_FILE:?Set retro file path for Filed Issues updates}"
+
+record_filed_issue() { printf '%s\n' "$1" >> "$FILED_ISSUES_FILE"; }
+
+create_issue() {
+  local target="$1"
+  local repo_args=()
+  local label_args=()
+  [[ "$target" == "harness" ]] && repo_args=(--repo "$HARNESS_TARGET_REPO")
+
+  if gh label create "harness-retro" "${repo_args[@]}" --color "5319e7" --description "Harness retro follow-up" >/dev/null 2>&1 ||
+     gh label list "${repo_args[@]}" --search "harness-retro" | grep -q '^harness-retro'; then
+    label_args=(--label "harness-retro")
+  fi
+
+  gh issue create "${repo_args[@]}" --title "$TITLE" --body-file "$BODY_FILE" "${label_args[@]}"
+}
+
+command -v gh >/dev/null || { record_filed_issue "- Proposal N (skipped): gh CLI unavailable"; exit 0; }
+
+HOST_URL="$(create_issue host)" || HOST_URL=""
+HARNESS_URL="$(create_issue harness)" || HARNESS_URL=""
+if [[ -z "$HOST_URL" || -z "$HARNESS_URL" ]]; then
+  record_filed_issue "- Proposal N (both, partial create): ${HARNESS_URL:-no-harness-url} | ${HOST_URL:-no-host-url}"
+  exit 0
+fi
+
+HARNESS_BODY="$(mktemp "${TMPDIR:-/tmp}/harness-retro-body.XXXXXX")"
+HOST_BODY="$(mktemp "${TMPDIR:-/tmp}/harness-retro-body.XXXXXX")"
+printf '%s\nCross-filed: %s\n' "$(cat "$BODY_FILE")" "$HOST_URL" > "$HARNESS_BODY"
+printf '%s\nCross-filed: %s\n' "$(cat "$BODY_FILE")" "$HARNESS_URL" > "$HOST_BODY"
+
+HARNESS_EDIT=ok
+HOST_EDIT=ok
+gh issue edit "$HARNESS_URL" --body-file "$HARNESS_BODY" || HARNESS_EDIT=failed
+gh issue edit "$HOST_URL" --body-file "$HOST_BODY" || HOST_EDIT=failed
+
+if [[ "$HARNESS_EDIT" != "ok" || "$HOST_EDIT" != "ok" ]]; then
+  record_filed_issue "- Proposal N (both, partial edit harness=$HARNESS_EDIT host=$HOST_EDIT): $HARNESS_URL | $HOST_URL"
+else
+  record_filed_issue "- Proposal N (both): $HARNESS_URL | $HOST_URL"
+fi
 ```
 
 ## Phase State Machine

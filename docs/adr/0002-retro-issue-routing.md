@@ -64,8 +64,9 @@ reference that section rather than redefining the schema.
 
 When a finding applies to both the harness and the host repository, the
 Orchestrator files both issues and cross-links them after creation. Missing or
-invalid routing fields are surfaced explicitly instead of silently defaulting
-to the host repository.
+invalid routing fields are recorded explicitly in Filed Issues and skipped
+instead of silently defaulting to the host repository. This remains autonomous:
+the Orchestrator does not pause for user input during filing.
 
 ## Consequences
 
@@ -79,9 +80,9 @@ to the host repository.
   `protocol-quick-ref.md §issue-routing`.
 - Negative: Retro items now have one more required field, so missing-field
   validation is part of the filing path.
-- Neutral: The harness target is hardcoded today; a future runtime override can
-  use the existing `HARNESS_*` convention with a single env var such as
-  `HARNESS_TARGET_REPO`.
+- Neutral: The harness target uses the existing `HARNESS_*` convention:
+  `HARNESS_TARGET_REPO` has a hardcoded default in the canonical schema and can
+  be overridden by callers that need a fork or future repository move.
 
 ## Validation
 
@@ -89,7 +90,8 @@ to the host repository.
   remains the only schema source.
 - `harness-retro.md` requires the field by reference to the quick-ref section.
 - `execution-protocol.md` Step 11 reads the field, routes host/harness/both
-  cases, handles missing fields explicitly, and records cross-filed issue URLs.
+  cases, records missing-field skips, and records cross-filed issue URLs or
+  partial failure state.
 - Future retros with harness defects produce issue bodies that can be filed in
   this repository without moving project-specific items out of the host repo.
 

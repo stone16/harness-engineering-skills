@@ -533,16 +533,16 @@ Sections: Task Metrics (checkpoints_total, passed_first_try, total_iterations, c
 
 ## issue-routing
 
-Every `Issue-ready: true` retro item MUST include:
+Every `Issue-ready: true` retro item MUST include this markdown body field:
 
-```yaml
-target_repo: harness | host | both
+```markdown
+- **target_repo**: harness | host | both
 ```
 
-Canonical harness target:
+Canonical harness target shell default:
 
-```text
-HARNESS_TARGET_REPO=https://github.com/stone16/harness-engineering-skills
+```bash
+HARNESS_TARGET_REPO="${HARNESS_TARGET_REPO:-https://github.com/stone16/harness-engineering-skills}"
 ```
 
 Classification:
@@ -555,7 +555,7 @@ Classification:
   or cleanup item.
 
 Precedence: the explicit `target_repo` field is required. Missing or invalid
-values are filing errors, not defaults to `host`.
+values are filing errors to record in Filed Issues, not defaults to `host`.
 
 For `target_repo: both`, file one issue in `HARNESS_TARGET_REPO` and one in
 the host repo, then update both bodies with `Cross-filed: <other_url>`. The
