@@ -531,6 +531,75 @@ Sections: Task Metrics (checkpoints_total, passed_first_try, total_iterations, c
 
 ---
 
+## issue-routing
+
+Every `Issue-ready: true` retro item MUST include this markdown body field:
+
+```markdown
+- **target_repo**: harness | host | both
+```
+
+Canonical harness target shell default:
+
+```bash
+HARNESS_TARGET_REPO="${HARNESS_TARGET_REPO:-stone16/harness-engineering-skills}"
+```
+
+Maintain this `owner/repo` literal in sync with this repository's public
+`origin` remote, normalized by removing any protocol and optional `.git` suffix.
+Verify it with
+`scripts/check-harness-target-repo.sh` after repository moves or release prep.
+
+Classification:
+
+- `harness`: skill defects, engine changes, and protocol changes owned by
+  the harness-engineering-skills maintainers.
+- `host`: project tech-stack rules, project CLAUDE.md guidance, and project
+  code cleanup owned by the current repository.
+- `both`: findings that require both a harness-side fix and a host-repo rule
+  or cleanup item, plus genuinely ambiguous ownership where filing both sides
+  preserves the feedback loop.
+
+Precedence: the explicit `target_repo` field is required. Missing or invalid
+values are filing errors to record in Filed Issues, not defaults to `host`.
+
+Extraction: parse the markdown body field with
+`^- \*\*target_repo\*\*:[[:space:]]*(.*)$`, trim surrounding whitespace,
+lowercase the value, and accept only `harness`, `host`, or `both`. Any other
+value, including an empty match, is an invalid `target_repo`.
+
+For `target_repo: both`, file one issue in `HARNESS_TARGET_REPO` and one in
+the host repo, then update both bodies with `Cross-filed: <other_url>`. The
+retro's Filed Issues record uses one line for the pair:
+
+```markdown
+- Proposal N (both): <harness-url> | <host-url>
+```
+
+Filed Issues record formats:
+
+- `- Proposal N (host): <host-url>`
+- `- Proposal N (harness): <harness-url>`
+- `- Proposal N (both): <harness-url> | <host-url>`
+- `- Proposal N (skipped): gh CLI unavailable`
+- `- Proposal N (skipped, host repo unresolved): <title>`
+- `- Proposal N (both, host repo unresolved): <harness-url> | no-host-url`
+- `- Proposal N (both, host repo unresolved, harness create failed): no-harness-url | no-host-url`
+- `- Proposal N (skipped, invalid target_repo='<raw>'): <title>`
+- `- Proposal N (skipped, <host|harness> create failed): <title>`
+- `- Proposal N (both, cross-link skipped, mktemp failed): <harness-url> | <host-url>`
+- `- Proposal N (both, cross-link skipped, body copy failed): <harness-url> | <host-url>`
+- `- Proposal N (both, annotation skipped, mktemp failed): <url>`
+- `- Proposal N (both, annotation failed): <url>`
+- `- Proposal N (both, partial create): <harness-url|no-harness-url> | <host-url|no-host-url>`
+- `- Proposal N (both, partial edit harness=<ok|failed> host=<ok|failed>): <harness-url> | <host-url>`
+
+Records may include a `label not applied` or `labels harness=<true|false>
+host=<true|false>` note inside the parenthesized status when issue creation
+succeeds but the best-effort `harness-retro` label is unavailable.
+
+---
+
 ## retro.md (PERSISTENT, in .harness/retro/)
 
 ```yaml
@@ -549,8 +618,14 @@ avg_iterations_per_checkpoint: <float>
 
 Sections: Observations (Error Patterns with [category: tag], Rule Conflict Observations, What Worked Well), Recommendations (Upgrade to Rule with drafted CLAUDE.md text, Upgrade to Principle, Rule Conflict Resolution, Skill Defect Flags).
 
+Every `Issue-ready: true` recommendation or defect carries the required
+`target_repo` field from §issue-routing.
+
 ---
 
 ## retro/index.md (PERSISTENT)
 
-Sections: Error Pattern Frequency (table: Category/Total/Last 10/Trend/Status), Pending Rule Proposals, Pending Principle Proposals, Rule Lifecycle Tracker, Skill Defect Log.
+Sections: Error Pattern Frequency (table: Category/Total/Last 10/Trend/Status), Pending Rule Proposals, Pending Principle Proposals, Rule Lifecycle Tracker, Skill Defect Log, Filed Issues.
+
+Filed Issues rows may contain one URL or, for `target_repo: both`, both URLs
+on one line in the format defined by §issue-routing.

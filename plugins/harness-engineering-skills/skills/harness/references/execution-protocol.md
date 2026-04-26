@@ -209,17 +209,30 @@ One match → load. Multiple → ask user. None → inform user.
     → Analyzes: which issues did the peer catch that the host missed? (cross-model learning)
 
 11. Auto-create GitHub issues from retro findings (proceed automatically):
-    → Parse retro.md for rule proposals (status: Proposed) and skill defects (severity ≥ Medium)
-    → For each, run `gh issue create` with:
-      - Title: "[Harness Retro] <proposal/defect title>"
-      - Body: full context including pattern tag, frequency, root cause, drafted rule text
-      - Labels: "harness-retro" (create label if not exists)
-    → Record created issue URLs in retro.md under a new "## Filed Issues" section
-    → Skip if `gh` CLI is not available (log warning, do not block)
+    → Parse Issue-ready items; read required `target_repo` (`protocol-quick-ref.md §issue-routing`)
+    → Set `HARNESS_TARGET_REPO` from `protocol-quick-ref.md §issue-routing`
+    → Optionally set `HOST_TARGET_REPO`; if unset, the filing script derives
+      it with `gh repo view --json nameWithOwner -q .nameWithOwner`
+    → Set `FILED_ISSUES_FILE` to `.harness/retro/index.md`, whose final section is `## Filed Issues`
+    → Invoke `scripts/file-retro-issue.sh` once per Issue-ready item with
+      `TARGET_REPO`, `PROPOSAL_INDEX`, `TITLE`, `BODY_FILE`, and
+      `FILED_ISSUES_FILE` set
+    → Missing/invalid `target_repo`: record the canonical invalid-target row
+      from `protocol-quick-ref.md §issue-routing`; never default to `host`
+    → Route `host`, `harness`, and `both` through `scripts/file-retro-issue.sh`
+    → `both` success: create both, edit both bodies with `Cross-filed: <other_url>`
+    → Best-effort ensure/apply label `harness-retro`; label failures must not block issue creation
+    → On unavailable `gh` or create/edit failure, record the canonical Filed
+      Issues row from `protocol-quick-ref.md §issue-routing` and continue
 
 12. $ENGINE complete --task-id <id>
     → Report to user (this is the ONLY time you summarize results to the user)
 ```
+
+The executable filing contract lives in
+[`scripts/file-retro-issue.sh`](../../../../../scripts/file-retro-issue.sh).
+Verify the routing matrix with
+[`scripts/test-file-retro-issue.sh`](../../../../../scripts/test-file-retro-issue.sh).
 
 ## Phase State Machine
 
