@@ -209,16 +209,24 @@ One match → load. Multiple → ask user. None → inform user.
     → Analyzes: which issues did the peer catch that the host missed? (cross-model learning)
 
 11. Auto-create GitHub issues from retro findings (proceed automatically):
-    → Parse retro.md for rule proposals (status: Proposed) and skill defects (severity ≥ Medium)
-    → For each, run `gh issue create` with:
-      - Title: "[Harness Retro] <proposal/defect title>"
-      - Body: full context including pattern tag, frequency, root cause, drafted rule text
-      - Labels: "harness-retro" (create label if not exists)
-    → Record created issue URLs in retro.md under a new "## Filed Issues" section
-    → Skip if `gh` CLI is not available (log warning, do not block)
+    → Parse Issue-ready items; read required `target_repo` (`protocol-quick-ref.md §issue-routing`)
+    → Missing/invalid `target_repo`: list titles, surface to user, skip those items; never default to `host`
+    → Route `host` with plain `gh issue create`; route `harness` with `gh issue create --repo https://github.com/stone16/harness-engineering-skills`
+    → Route `both`: create both, edit both bodies with `Cross-filed: <other_url>`, record `- Proposal N (both): <harness-url> | <host-url>`
+    → On any of the four `both` create/edit calls failing, record partial state in "## Filed Issues" and continue; skip all filing if `gh` is unavailable
 
 12. $ENGINE complete --task-id <id>
     → Report to user (this is the ONLY time you summarize results to the user)
+```
+
+Step 11 concrete routing snippet:
+
+```bash
+set -uo pipefail
+HOST_URL=$(gh issue create --title "$TITLE" --body-file "$BODY_FILE" --label "harness-retro")
+HARNESS_URL=$(gh issue create --repo https://github.com/stone16/harness-engineering-skills --title "$TITLE" --body-file "$BODY_FILE" --label "harness-retro")
+gh issue edit "$HARNESS_URL" --body-file <(printf '%s\nCross-filed: %s\n' "$(cat "$BODY_FILE")" "$HOST_URL")
+gh issue edit "$HOST_URL" --body-file <(printf '%s\nCross-filed: %s\n' "$(cat "$BODY_FILE")" "$HARNESS_URL")
 ```
 
 ## Phase State Machine
