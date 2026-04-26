@@ -78,7 +78,7 @@ issues. For each actionable item, include:
 - **Pattern**: <pattern tag>
 - **Severity**: critical | high | medium | low
 - **Status**: Proposed | Monitoring
-- **target_repo**: <required; classify via protocol-quick-ref.md §issue-routing>
+- **target_repo**: <required when Issue-ready: true; classify via protocol-quick-ref.md §issue-routing>
 - **Root cause**: <one paragraph>
 - **Drafted rule text**:
   ```

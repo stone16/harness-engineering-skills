@@ -210,6 +210,7 @@ One match → load. Multiple → ask user. None → inform user.
 
 11. Auto-create GitHub issues from retro findings (proceed automatically):
     → Parse Issue-ready items; read required `target_repo` (`protocol-quick-ref.md §issue-routing`)
+    → Set `HOST_TARGET_REPO` to the current host repository (`owner/repo` or URL); do not rely on cwd
     → Set `FILED_ISSUES_FILE` to `.harness/retro/index.md`, whose final section is `## Filed Issues`
     → Missing/invalid `target_repo`: record `- Proposal N (skipped, invalid target_repo): <title>` in "## Filed Issues"; never default to `host`
     → Route `host`, `harness`, and `both` through the canonical snippet below
@@ -224,17 +225,19 @@ One match → load. Multiple → ask user. None → inform user.
 
 Step 11 concrete routing snippet (run once per Issue-ready proposal with
 `PROPOSAL_INDEX`, `TITLE`, `BODY_FILE`, `FILED_ISSUES_FILE=.harness/retro/index.md`,
-and `HARNESS_TARGET_REPO` from `protocol-quick-ref.md §issue-routing` already
-set; missing `TARGET_REPO` is recorded as an invalid route):
+`HOST_TARGET_REPO`, and `HARNESS_TARGET_REPO` from
+`protocol-quick-ref.md §issue-routing` already set; missing `TARGET_REPO` is
+recorded as an invalid route):
 
 ```bash
 #!/usr/bin/env bash
 set -uo pipefail
-TARGET_REPO="${TARGET_REPO:-__missing__}"
+TARGET_REPO="$(printf '%s' "${TARGET_REPO:-__missing__}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
 : "${PROPOSAL_INDEX:?Set proposal number}"
 : "${TITLE:?Set per-proposal issue title}"
 : "${BODY_FILE:?Set per-proposal body file path}"
 : "${FILED_ISSUES_FILE:?Set retro file path for Filed Issues updates}"
+: "${HOST_TARGET_REPO:?Set host repository owner/name or URL}"
 : "${HARNESS_TARGET_REPO:?Set HARNESS_TARGET_REPO from protocol-quick-ref.md §issue-routing}"
 
 record_filed_issue() { printf '%s\n' "$1" >> "$FILED_ISSUES_FILE"; }
@@ -246,9 +249,9 @@ ensure_label() {
       gh label create "harness-retro" --repo "$HARNESS_TARGET_REPO" --color "5319e7" --description "Harness retro follow-up" >/dev/null 2>&1 ||
       gh label view "harness-retro" --repo "$HARNESS_TARGET_REPO" >/dev/null 2>&1
   else
-    gh label view "harness-retro" >/dev/null 2>&1 ||
-      gh label create "harness-retro" --color "5319e7" --description "Harness retro follow-up" >/dev/null 2>&1 ||
-      gh label view "harness-retro" >/dev/null 2>&1
+    gh label view "harness-retro" --repo "$HOST_TARGET_REPO" >/dev/null 2>&1 ||
+      gh label create "harness-retro" --repo "$HOST_TARGET_REPO" --color "5319e7" --description "Harness retro follow-up" >/dev/null 2>&1 ||
+      gh label view "harness-retro" --repo "$HOST_TARGET_REPO" >/dev/null 2>&1
   fi
 }
 
@@ -261,9 +264,9 @@ create_issue() {
   elif [[ "$target" == "harness" ]]; then
     gh issue create --repo "$HARNESS_TARGET_REPO" --title "$TITLE" --body-file "$BODY_FILE"
   elif [[ "$label_ready" == "true" ]]; then
-    gh issue create --title "$TITLE" --body-file "$BODY_FILE" --label "harness-retro"
+    gh issue create --repo "$HOST_TARGET_REPO" --title "$TITLE" --body-file "$BODY_FILE" --label "harness-retro"
   else
-    gh issue create --title "$TITLE" --body-file "$BODY_FILE"
+    gh issue create --repo "$HOST_TARGET_REPO" --title "$TITLE" --body-file "$BODY_FILE"
   fi
 }
 
@@ -282,6 +285,16 @@ file_single_repo_issue() {
   record_filed_issue "- Proposal $PROPOSAL_INDEX ($target$label_note): $url"
 }
 
+annotate_partial_cross_file() {
+  local url="$1"
+  local missing_target="$2"
+  local body
+  body="$(mktemp "${TMPDIR:-/tmp}/harness-retro-body.XXXXXX")"
+  printf '%s\nCross-filed: pending - %s create failed; see retro index proposal %s.\n' "$(cat "$BODY_FILE")" "$missing_target" "$PROPOSAL_INDEX" > "$body"
+  gh issue edit "$url" --body-file "$body" >/dev/null 2>&1 || true
+  rm -f "$body"
+}
+
 file_cross_repo_issue() {
   local host_url harness_url harness_body host_body harness_edit host_edit host_label harness_label label_note
   host_label="false"
@@ -291,6 +304,8 @@ file_cross_repo_issue() {
   host_url="$(create_issue host "$host_label")" || host_url=""
   harness_url="$(create_issue harness "$harness_label")" || harness_url=""
   if [[ -z "$host_url" || -z "$harness_url" ]]; then
+    [[ -n "$host_url" ]] && annotate_partial_cross_file "$host_url" "harness"
+    [[ -n "$harness_url" ]] && annotate_partial_cross_file "$harness_url" "host"
     record_filed_issue "- Proposal $PROPOSAL_INDEX (both, partial create): ${harness_url:-no-harness-url} | ${host_url:-no-host-url}"
     return 0
   fi

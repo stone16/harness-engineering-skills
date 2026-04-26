@@ -546,7 +546,8 @@ HARNESS_TARGET_REPO="${HARNESS_TARGET_REPO:-https://github.com/stone16/harness-e
 ```
 
 Maintain this literal in sync with this repository's public `origin` remote,
-normalized by removing any optional `.git` suffix.
+normalized by removing any optional `.git` suffix. Verify it with
+`scripts/check-harness-target-repo.sh` after repository moves or release prep.
 
 Classification:
 
