@@ -42,6 +42,21 @@ For each checkpoint evaluate:
 2. **Acceptance criteria testability** — can each criterion be verified with a concrete test?
    - BAD: "Authentication works correctly"
    - GOOD: "POST /api/auth/login with valid credentials returns 200 + JWT; invalid credentials return 401"
+   - If `.harness/<task-id>/host-conventions-card.md` exists with
+     `scout_status: complete`, use the Host Conventions Card as an input to
+     the TESTABLE / VAGUE judgment.
+   - When marking a criterion VAGUE, include one attribution:
+     - `VAGUE - reason: criterion-wording`: the criterion is subjective or
+       underspecified even though the relevant convention is documented.
+       Suggested fix wording: rewrite the criterion into an observable command,
+       assertion, screenshot, response, or artifact check.
+     - `VAGUE - reason: tier-absence`: the criterion depends on a host-repo
+       convention that is absent from the Card's P0-P5 evidence. Suggested fix
+       wording: move the convention question to the spec's Open Questions or
+       cite a concrete lower-tier signal explicitly.
+   - If the Card is missing or `scout_status` is anything other than
+     `complete`, record `Card unavailable - attribution deferred`; do not use
+     Card-based tier attribution for this round.
 3. **Dependencies** — are inter-checkpoint dependencies explicit? Is the ordering correct?
 4. **Type accuracy** — is `frontend | backend | fullstack | infrastructure` correctly assigned?
 5. **Files of interest** — are the affected files listed? Are any missing?
