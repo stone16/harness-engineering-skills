@@ -28,10 +28,15 @@ if [[ -z "$remote_url" ]]; then
 fi
 remote_url="$(normalize_repo_url "$remote_url")"
 
+quick_ref_count="$(grep -c '^HARNESS_TARGET_REPO=' "$quick_ref" 2>/dev/null || true)"
+if [[ "$quick_ref_count" != "1" ]]; then
+  echo "Expected exactly one HARNESS_TARGET_REPO default in $quick_ref; found $quick_ref_count" >&2
+  exit 1
+fi
+
 quick_ref_url="$(
-  grep -m1 '^HARNESS_TARGET_REPO=' "$quick_ref" |
-    sed 's/^HARNESS_TARGET_REPO="${HARNESS_TARGET_REPO:-//; s/}"$//' ||
-    true
+  grep '^HARNESS_TARGET_REPO=' "$quick_ref" |
+    sed 's/^HARNESS_TARGET_REPO="${HARNESS_TARGET_REPO:-//; s/}"$//'
 )"
 
 if [[ -z "$quick_ref_url" ]]; then

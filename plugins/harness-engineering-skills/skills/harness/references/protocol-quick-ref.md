@@ -578,6 +578,8 @@ Filed Issues record formats:
 - `- Proposal N (both): <harness-url> | <host-url>`
 - `- Proposal N (skipped): gh CLI unavailable`
 - `- Proposal N (skipped, host repo unresolved): <title>`
+- `- Proposal N (both, host repo unresolved): <harness-url> | no-host-url`
+- `- Proposal N (both, host repo unresolved, harness create failed): no-harness-url | no-host-url`
 - `- Proposal N (skipped, invalid target_repo='<raw>'): <title>`
 - `- Proposal N (skipped, <host|harness> create failed): <title>`
 - `- Proposal N (both, cross-link skipped, mktemp failed): <harness-url> | <host-url>`

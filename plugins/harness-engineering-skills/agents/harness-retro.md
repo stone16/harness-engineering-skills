@@ -71,14 +71,15 @@ draft rule text or issue bodies a human can approve without rewriting.
 ### Issue-Ready Structure (v0.8.0)
 
 `retro.md` structures proposals and defects so the Orchestrator can file GitHub
-issues. For each actionable item, include:
+issues. For each actionable item, include the `target_repo` field when
+`Issue-ready: true`; classify it via `protocol-quick-ref.md §issue-routing`.
 
 ````markdown
 ### Proposal N: <title>
 - **Pattern**: <pattern tag>
 - **Severity**: critical | high | medium | low
 - **Status**: Proposed | Monitoring
-- **target_repo**: <required when Issue-ready: true; classify via protocol-quick-ref.md §issue-routing>
+- **target_repo**: harness | host | both
 - **Root cause**: <one paragraph>
 - **Drafted rule text**:
   ```
