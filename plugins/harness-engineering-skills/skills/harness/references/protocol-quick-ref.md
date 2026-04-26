@@ -531,6 +531,42 @@ Sections: Task Metrics (checkpoints_total, passed_first_try, total_iterations, c
 
 ---
 
+## issue-routing
+
+Every `Issue-ready: true` retro item MUST include:
+
+```yaml
+target_repo: harness | host | both
+```
+
+Canonical harness target:
+
+```text
+HARNESS_TARGET_REPO=https://github.com/stone16/harness-engineering-skills
+```
+
+Classification:
+
+- `harness`: skill defects, engine changes, and protocol changes owned by
+  the harness-engineering-skills maintainers.
+- `host`: project tech-stack rules, project CLAUDE.md guidance, and project
+  code cleanup owned by the current repository.
+- `both`: findings that require both a harness-side fix and a host-repo rule
+  or cleanup item.
+
+Precedence: the explicit `target_repo` field is required. Missing or invalid
+values are filing errors, not defaults to `host`.
+
+For `target_repo: both`, file one issue in `HARNESS_TARGET_REPO` and one in
+the host repo, then update both bodies with `Cross-filed: <other_url>`. The
+retro's Filed Issues record uses one line for the pair:
+
+```markdown
+- Proposal N (both): <harness-url> | <host-url>
+```
+
+---
+
 ## retro.md (PERSISTENT, in .harness/retro/)
 
 ```yaml
@@ -549,8 +585,14 @@ avg_iterations_per_checkpoint: <float>
 
 Sections: Observations (Error Patterns with [category: tag], Rule Conflict Observations, What Worked Well), Recommendations (Upgrade to Rule with drafted CLAUDE.md text, Upgrade to Principle, Rule Conflict Resolution, Skill Defect Flags).
 
+Every `Issue-ready: true` recommendation or defect carries the required
+`target_repo` field from §issue-routing.
+
 ---
 
 ## retro/index.md (PERSISTENT)
 
-Sections: Error Pattern Frequency (table: Category/Total/Last 10/Trend/Status), Pending Rule Proposals, Pending Principle Proposals, Rule Lifecycle Tracker, Skill Defect Log.
+Sections: Error Pattern Frequency (table: Category/Total/Last 10/Trend/Status), Pending Rule Proposals, Pending Principle Proposals, Rule Lifecycle Tracker, Skill Defect Log, Filed Issues.
+
+Filed Issues rows may contain one URL or, for `target_repo: both`, both URLs
+on one line in the format defined by §issue-routing.
