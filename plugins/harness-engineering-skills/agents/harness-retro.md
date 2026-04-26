@@ -87,6 +87,9 @@ issues. For each actionable item, include:
 - **Issue-ready**: true | false
 ```
 
+If ownership is genuinely ambiguous after applying §issue-routing, set
+`target_repo` to `both` and note the uncertainty in the root cause.
+
 Set `Issue-ready: true` for `Status: Proposed` and severity ≥ medium. The
 Orchestrator files those issues. For Host Repo Documentation Gap findings,
 include the evidence fields in the same item:

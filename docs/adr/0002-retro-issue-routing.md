@@ -63,10 +63,12 @@ defined only in `protocol-quick-ref.md §issue-routing`. Agent and protocol file
 reference that section rather than redefining the schema.
 
 When a finding applies to both the harness and the host repository, the
-Orchestrator files both issues and cross-links them after creation. Missing or
-invalid routing fields are recorded explicitly in Filed Issues and skipped
-instead of silently defaulting to the host repository. This remains autonomous:
-the Orchestrator does not pause for user input during filing.
+Orchestrator files both issues and cross-links them after creation. If
+ownership is genuinely ambiguous, Retro uses `both` and records the uncertainty
+in the proposal body. Missing or invalid routing fields are recorded explicitly
+in Filed Issues and skipped instead of silently defaulting to the host
+repository. This remains autonomous: the Orchestrator does not pause for user
+input during filing.
 
 ## Consequences
 

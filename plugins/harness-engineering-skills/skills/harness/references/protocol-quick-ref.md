@@ -545,6 +545,9 @@ Canonical harness target shell default:
 HARNESS_TARGET_REPO="${HARNESS_TARGET_REPO:-https://github.com/stone16/harness-engineering-skills}"
 ```
 
+Maintain this literal in sync with this repository's public `origin` remote:
+`https://github.com/stone16/harness-engineering-skills.git`.
+
 Classification:
 
 - `harness`: skill defects, engine changes, and protocol changes owned by
@@ -552,7 +555,8 @@ Classification:
 - `host`: project tech-stack rules, project CLAUDE.md guidance, and project
   code cleanup owned by the current repository.
 - `both`: findings that require both a harness-side fix and a host-repo rule
-  or cleanup item.
+  or cleanup item, plus genuinely ambiguous ownership where filing both sides
+  preserves the feedback loop.
 
 Precedence: the explicit `target_repo` field is required. Missing or invalid
 values are filing errors to record in Filed Issues, not defaults to `host`.

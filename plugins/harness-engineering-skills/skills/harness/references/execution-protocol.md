@@ -211,8 +211,9 @@ One match → load. Multiple → ask user. None → inform user.
 11. Auto-create GitHub issues from retro findings (proceed automatically):
     → Parse Issue-ready items; read required `target_repo` (`protocol-quick-ref.md §issue-routing`)
     → Missing/invalid `target_repo`: record `- Proposal N (skipped, invalid target_repo): <title>` in "## Filed Issues"; never default to `host`
-    → Route `host` with plain `gh issue create`; route `harness` with `gh issue create --repo "$HARNESS_TARGET_REPO"`
-    → Route `both`: create both, edit both bodies with `Cross-filed: <other_url>`, record `- Proposal N (both): <harness-url> | <host-url>`
+    → Route `host`, `harness`, and `both` through the canonical snippet below
+    → Single-route create failure: record `- Proposal N (skipped, <host|harness> create failed): <title>`
+    → `both` success: create both, edit both bodies with `Cross-filed: <other_url>`, record `- Proposal N (both): <harness-url> | <host-url>`
     → Best-effort ensure/apply label `harness-retro`; label failures must not block issue creation
     → On unavailable `gh` or any `both` create/edit failure, record skip/partial state in "## Filed Issues" and continue
 
@@ -220,53 +221,98 @@ One match → load. Multiple → ask user. None → inform user.
     → Report to user (this is the ONLY time you summarize results to the user)
 ```
 
-Step 11 concrete routing snippet:
+Step 11 concrete routing snippet (run once per Issue-ready proposal with
+`TARGET_REPO`, `PROPOSAL_INDEX`, `TITLE`, `BODY_FILE`, and
+`HARNESS_TARGET_REPO` from `protocol-quick-ref.md §issue-routing` already set):
 
 ```bash
+#!/usr/bin/env bash
 set -uo pipefail
-: "${HARNESS_TARGET_REPO:?Set HARNESS_TARGET_REPO from protocol-quick-ref.md §issue-routing}"
+: "${TARGET_REPO:?Set required target_repo from protocol-quick-ref.md §issue-routing}"
+: "${PROPOSAL_INDEX:?Set proposal number}"
+: "${TITLE:?Set per-proposal issue title}"
+: "${BODY_FILE:?Set per-proposal body file path}"
 : "${FILED_ISSUES_FILE:?Set retro file path for Filed Issues updates}"
+: "${HARNESS_TARGET_REPO:?Set HARNESS_TARGET_REPO from protocol-quick-ref.md §issue-routing}"
 
 record_filed_issue() { printf '%s\n' "$1" >> "$FILED_ISSUES_FILE"; }
 
-create_issue() {
+ensure_label() {
   local target="$1"
-  local repo_args=()
-  local label_args=()
-  [[ "$target" == "harness" ]] && repo_args=(--repo "$HARNESS_TARGET_REPO")
-
-  if gh label create "harness-retro" "${repo_args[@]}" --color "5319e7" --description "Harness retro follow-up" >/dev/null 2>&1 ||
-     gh label list "${repo_args[@]}" --search "harness-retro" | grep -q '^harness-retro'; then
-    label_args=(--label "harness-retro")
+  if [[ "$target" == "harness" ]]; then
+    gh label create "harness-retro" --repo "$HARNESS_TARGET_REPO" --color "5319e7" --description "Harness retro follow-up" >/dev/null 2>&1 ||
+      gh label list --repo "$HARNESS_TARGET_REPO" --search "harness-retro" | grep -q '^harness-retro'
+  else
+    gh label create "harness-retro" --color "5319e7" --description "Harness retro follow-up" >/dev/null 2>&1 ||
+      gh label list --search "harness-retro" | grep -q '^harness-retro'
   fi
-
-  gh issue create "${repo_args[@]}" --title "$TITLE" --body-file "$BODY_FILE" "${label_args[@]}"
 }
 
-command -v gh >/dev/null || { record_filed_issue "- Proposal N (skipped): gh CLI unavailable"; exit 0; }
+create_issue() {
+  local target="$1"
+  local label_ready="false"
+  ensure_label "$target" && label_ready="true"
 
-HOST_URL="$(create_issue host)" || HOST_URL=""
-HARNESS_URL="$(create_issue harness)" || HARNESS_URL=""
-if [[ -z "$HOST_URL" || -z "$HARNESS_URL" ]]; then
-  record_filed_issue "- Proposal N (both, partial create): ${HARNESS_URL:-no-harness-url} | ${HOST_URL:-no-host-url}"
-  exit 0
-fi
+  if [[ "$target" == "harness" && "$label_ready" == "true" ]]; then
+    gh issue create --repo "$HARNESS_TARGET_REPO" --title "$TITLE" --body-file "$BODY_FILE" --label "harness-retro"
+  elif [[ "$target" == "harness" ]]; then
+    gh issue create --repo "$HARNESS_TARGET_REPO" --title "$TITLE" --body-file "$BODY_FILE"
+  elif [[ "$label_ready" == "true" ]]; then
+    gh issue create --title "$TITLE" --body-file "$BODY_FILE" --label "harness-retro"
+  else
+    gh issue create --title "$TITLE" --body-file "$BODY_FILE"
+  fi
+}
 
-HARNESS_BODY="$(mktemp "${TMPDIR:-/tmp}/harness-retro-body.XXXXXX")"
-HOST_BODY="$(mktemp "${TMPDIR:-/tmp}/harness-retro-body.XXXXXX")"
-printf '%s\nCross-filed: %s\n' "$(cat "$BODY_FILE")" "$HOST_URL" > "$HARNESS_BODY"
-printf '%s\nCross-filed: %s\n' "$(cat "$BODY_FILE")" "$HARNESS_URL" > "$HOST_BODY"
+file_single_repo_issue() {
+  local target="$1"
+  local url
+  url="$(create_issue "$target")" || url=""
+  if [[ -z "$url" ]]; then
+    record_filed_issue "- Proposal $PROPOSAL_INDEX (skipped, $target create failed): $TITLE"
+    return 0
+  fi
+  record_filed_issue "- Proposal $PROPOSAL_INDEX ($target): $url"
+}
 
-HARNESS_EDIT=ok
-HOST_EDIT=ok
-gh issue edit "$HARNESS_URL" --body-file "$HARNESS_BODY" || HARNESS_EDIT=failed
-gh issue edit "$HOST_URL" --body-file "$HOST_BODY" || HOST_EDIT=failed
+file_cross_repo_issue() {
+  local host_url harness_url harness_body host_body harness_edit host_edit
+  host_url="$(create_issue host)" || host_url=""
+  harness_url="$(create_issue harness)" || harness_url=""
+  if [[ -z "$host_url" || -z "$harness_url" ]]; then
+    record_filed_issue "- Proposal $PROPOSAL_INDEX (both, partial create): ${harness_url:-no-harness-url} | ${host_url:-no-host-url}"
+    return 0
+  fi
 
-if [[ "$HARNESS_EDIT" != "ok" || "$HOST_EDIT" != "ok" ]]; then
-  record_filed_issue "- Proposal N (both, partial edit harness=$HARNESS_EDIT host=$HOST_EDIT): $HARNESS_URL | $HOST_URL"
-else
-  record_filed_issue "- Proposal N (both): $HARNESS_URL | $HOST_URL"
-fi
+  harness_body="$(mktemp "${TMPDIR:-/tmp}/harness-retro-body.XXXXXX")"
+  host_body="$(mktemp "${TMPDIR:-/tmp}/harness-retro-body.XXXXXX")"
+  printf '%s\nCross-filed: %s\n' "$(cat "$BODY_FILE")" "$host_url" > "$harness_body"
+  printf '%s\nCross-filed: %s\n' "$(cat "$BODY_FILE")" "$harness_url" > "$host_body"
+
+  harness_edit=ok
+  host_edit=ok
+  gh issue edit "$harness_url" --body-file "$harness_body" || harness_edit=failed
+  gh issue edit "$host_url" --body-file "$host_body" || host_edit=failed
+  rm -f "$harness_body" "$host_body"
+
+  if [[ "$harness_edit" != "ok" || "$host_edit" != "ok" ]]; then
+    record_filed_issue "- Proposal $PROPOSAL_INDEX (both, partial edit harness=$harness_edit host=$host_edit): $harness_url | $host_url"
+  else
+    record_filed_issue "- Proposal $PROPOSAL_INDEX (both): $harness_url | $host_url"
+  fi
+}
+
+file_retro_issue() {
+  command -v gh >/dev/null || { record_filed_issue "- Proposal $PROPOSAL_INDEX (skipped): gh CLI unavailable"; return 0; }
+
+  case "$TARGET_REPO" in
+    host|harness) file_single_repo_issue "$TARGET_REPO" ;;
+    both) file_cross_repo_issue ;;
+    *) record_filed_issue "- Proposal $PROPOSAL_INDEX (skipped, invalid target_repo): $TITLE" ;;
+  esac
+}
+
+file_retro_issue
 ```
 
 ## Phase State Machine
