@@ -13,8 +13,12 @@ sanitize_line() {
   printf '%s' "$1" | tr '\r\n' '  '
 }
 
+normalize_target_repo() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//'
+}
+
 RAW_TARGET_REPO="$(sanitize_line "${TARGET_REPO-}")"
-TARGET_REPO="$(printf '%s' "${RAW_TARGET_REPO:-__missing__}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+TARGET_REPO="$(normalize_target_repo "${RAW_TARGET_REPO:-__missing__}")"
 PROPOSAL_INDEX="$(sanitize_line "${PROPOSAL_INDEX:?Set proposal number}")"
 TITLE="$(sanitize_line "${TITLE:?Set per-proposal issue title}")"
 : "${BODY_FILE:?Set per-proposal body file path}"
@@ -26,7 +30,18 @@ HARNESS_TARGET_REPO="${HARNESS_TARGET_REPO:-stone16/harness-engineering-skills}"
 }
 
 ensure_filed_issues_section() {
-  grep -qxF '## Filed Issues' "$FILED_ISSUES_FILE" 2>/dev/null && return 0
+  if grep -qxF '## Filed Issues' "$FILED_ISSUES_FILE" 2>/dev/null; then
+    if ! awk '
+      /^## Filed Issues$/ { seen=1; next }
+      seen && /^## / { bad=1 }
+      END { exit bad ? 1 : 0 }
+    ' "$FILED_ISSUES_FILE"; then
+      echo "Filed Issues must be the final section in $FILED_ISSUES_FILE" >&2
+      exit 1
+    fi
+    return 0
+  fi
+
   if [[ -s "$FILED_ISSUES_FILE" ]]; then
     printf '\n## Filed Issues\n' >> "$FILED_ISSUES_FILE" || return 1
   else
@@ -96,10 +111,18 @@ annotate_partial_cross_file() {
   local url="$1"
   local missing_target="$2"
   local body
-  body="$(mktemp "${TMPDIR:-/tmp}/harness-retro-body.XXXXXX" 2>/dev/null)" || return 0
+  body="$(mktemp "${TMPDIR:-/tmp}/harness-retro-body.XXXXXX" 2>/dev/null)" || {
+    record_filed_issue "- Proposal $PROPOSAL_INDEX (both, annotation skipped, mktemp failed): $url"
+    return 0
+  }
   TMP_BODIES+=("$body")
-  printf '%s\nCross-filed: pending - %s create failed; see retro index proposal %s.\n' "$(cat "$BODY_FILE")" "$missing_target" "$PROPOSAL_INDEX" > "$body"
-  gh issue edit "$url" --body-file "$body" >/dev/null 2>&1 || true
+  cp "$BODY_FILE" "$body" || {
+    record_filed_issue "- Proposal $PROPOSAL_INDEX (both, annotation failed): $url"
+    return 0
+  }
+  printf '\nCross-filed: pending - %s create failed; see retro index proposal %s.\n' "$missing_target" "$PROPOSAL_INDEX" >> "$body"
+  gh issue edit "$url" --body-file "$body" >/dev/null 2>&1 ||
+    record_filed_issue "- Proposal $PROPOSAL_INDEX (both, annotation failed): $url"
   rm -f "$body"
 }
 
@@ -146,8 +169,16 @@ file_cross_repo_issue() {
     return 0
   }
   TMP_BODIES+=("$host_body")
-  printf '%s\nCross-filed: %s\n' "$(cat "$BODY_FILE")" "$host_url" > "$harness_body"
-  printf '%s\nCross-filed: %s\n' "$(cat "$BODY_FILE")" "$harness_url" > "$host_body"
+  cp "$BODY_FILE" "$harness_body" || {
+    record_filed_issue "- Proposal $PROPOSAL_INDEX (both, cross-link skipped, body copy failed): $harness_url | $host_url"
+    return 0
+  }
+  cp "$BODY_FILE" "$host_body" || {
+    record_filed_issue "- Proposal $PROPOSAL_INDEX (both, cross-link skipped, body copy failed): $harness_url | $host_url"
+    return 0
+  }
+  printf '\nCross-filed: %s\n' "$host_url" >> "$harness_body"
+  printf '\nCross-filed: %s\n' "$harness_url" >> "$host_body"
 
   harness_edit=ok
   host_edit=ok

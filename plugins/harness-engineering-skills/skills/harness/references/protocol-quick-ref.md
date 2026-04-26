@@ -588,6 +588,9 @@ Filed Issues record formats:
 - `- Proposal N (skipped, invalid target_repo='<raw>'): <title>`
 - `- Proposal N (skipped, <host|harness> create failed): <title>`
 - `- Proposal N (both, cross-link skipped, mktemp failed): <harness-url> | <host-url>`
+- `- Proposal N (both, cross-link skipped, body copy failed): <harness-url> | <host-url>`
+- `- Proposal N (both, annotation skipped, mktemp failed): <url>`
+- `- Proposal N (both, annotation failed): <url>`
 - `- Proposal N (both, partial create): <harness-url|no-harness-url> | <host-url|no-host-url>`
 - `- Proposal N (both, partial edit harness=<ok|failed> host=<ok|failed>): <harness-url> | <host-url>`
 

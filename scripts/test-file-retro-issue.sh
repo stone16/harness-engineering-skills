@@ -30,7 +30,7 @@ fi
 if [[ "$1 $2" == "issue create" ]]; then
   [[ "$mode" == "both_create_fail" ]] && exit 1
   if [[ " $* " == *" --repo stone16/harness-engineering-skills "* ]]; then
-    [[ "$mode" == "harness_create_fail" ]] && exit 1
+    [[ "$mode" == "harness_create_fail" || "$mode" == "annotation_fail" ]] && exit 1
     printf 'https://github.com/stone16/harness-engineering-skills/issues/10\n'
   else
     [[ "$mode" == "host_create_fail" ]] && exit 1
@@ -39,6 +39,7 @@ if [[ "$1 $2" == "issue create" ]]; then
   exit 0
 fi
 if [[ "$1 $2" == "issue edit" ]]; then
+  [[ "$mode" == "annotation_fail" ]] && exit 1
   [[ "$mode" == "partial_edit" && "$3" == *"harness-engineering-skills"* ]] && exit 1
   exit 0
 fi
@@ -67,8 +68,10 @@ run_case "Harness " "Harness"
 run_case "both" "both"
 run_case "invalid" "invalid"
 run_case "both" "bothNoHost" "host_unresolved"
+run_case "host" "hostNoHost" "host_unresolved"
 run_case "host" "hostCreateFail" "host_create_fail"
 run_case "both" "partialCreate" "harness_create_fail"
+run_case "both" "annotationFail" "annotation_fail"
 run_case "both" "partialHostCreate" "host_create_fail"
 run_case "both" "partialEdit" "partial_edit"
 run_case "host" "labelFail" "label_fail"
@@ -103,8 +106,11 @@ cat > "$expected" <<'EOF'
 - Proposal both (both): https://github.com/stone16/harness-engineering-skills/issues/10 | https://github.com/host/repo/issues/20
 - Proposal invalid (skipped, invalid target_repo='invalid'): Title invalid
 - Proposal bothNoHost (both, host repo unresolved): https://github.com/stone16/harness-engineering-skills/issues/10 | no-host-url
+- Proposal hostNoHost (skipped, host repo unresolved): Title hostNoHost
 - Proposal hostCreateFail (skipped, host create failed): Title hostCreateFail
 - Proposal partialCreate (both, partial create): no-harness-url | https://github.com/host/repo/issues/20
+- Proposal annotationFail (both, annotation failed): https://github.com/host/repo/issues/20
+- Proposal annotationFail (both, partial create): no-harness-url | https://github.com/host/repo/issues/20
 - Proposal partialHostCreate (both, partial create): https://github.com/stone16/harness-engineering-skills/issues/10 | no-host-url
 - Proposal partialEdit (both, partial edit harness=failed host=ok): https://github.com/stone16/harness-engineering-skills/issues/10 | https://github.com/host/repo/issues/20
 - Proposal labelFail (host, label not applied): https://github.com/host/repo/issues/20

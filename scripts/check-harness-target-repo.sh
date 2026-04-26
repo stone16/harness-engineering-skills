@@ -18,8 +18,18 @@ normalize_repo_url() {
     git@github.com:*)
       url="${url#git@github.com:}"
       ;;
+    ssh://git@github.com/*)
+      url="${url#ssh://git@github.com/}"
+      ;;
     https://github.com/*)
       url="${url#https://github.com/}"
+      ;;
+    https://*@github.com/*)
+      url="${url#https://}"
+      url="${url#*@github.com/}"
+      ;;
+    git://github.com/*)
+      url="${url#git://github.com/}"
       ;;
   esac
   printf '%s\n' "${url%.git}"
@@ -49,6 +59,25 @@ if [[ -z "$quick_ref_url" ]]; then
 fi
 
 quick_ref_url="$(normalize_repo_url "$quick_ref_url")"
+
+script_default_count="$(grep -c '^HARNESS_TARGET_REPO="\${HARNESS_TARGET_REPO:-' "$repo_root/scripts/file-retro-issue.sh" 2>/dev/null || true)"
+if [[ "$script_default_count" != "1" ]]; then
+  echo "Expected exactly one HARNESS_TARGET_REPO default in scripts/file-retro-issue.sh; found $script_default_count" >&2
+  exit 1
+fi
+
+script_url="$(
+  grep '^HARNESS_TARGET_REPO="\${HARNESS_TARGET_REPO:-' "$repo_root/scripts/file-retro-issue.sh" |
+    sed 's/^HARNESS_TARGET_REPO="${HARNESS_TARGET_REPO:-//; s/}"$//'
+)"
+script_url="$(normalize_repo_url "$script_url")"
+
+if [[ "$script_url" != "$quick_ref_url" ]]; then
+  echo "HARNESS_TARGET_REPO default in file-retro-issue.sh does not match quick-ref" >&2
+  echo "script:    $script_url" >&2
+  echo "quick-ref: $quick_ref_url" >&2
+  exit 1
+fi
 
 if [[ "$quick_ref_url" != "$remote_url" ]]; then
   echo "HARNESS_TARGET_REPO default does not match origin remote" >&2
