@@ -31,6 +31,7 @@ set -uo pipefail
 #   abort               Git reset --hard to baseline_sha, mark ABORTED
 #   assemble-context    Extract checkpoint context from spec.md -> output context.md
 #   assemble-retro-input  Summarize all checkpoint data -> output retro-input.md
+#   scope-check         List files changed against freshly fetched origin/<base>
 #   validate-transition Check state transition legality
 
 # ============================================================================
@@ -212,12 +213,14 @@ Commands:
   abort                 Abort current checkpoint (git reset --hard)
   assemble-context      Build context.md for a checkpoint
   assemble-retro-input  Build retro-input.md for retrospective
+  scope-check           List changed files against freshly fetched origin/<base>
   validate-transition   Check if a state transition is legal
 
 Options:
   --task-id ID          Task identifier (required for most commands)
   --checkpoint NN       Checkpoint number (zero-padded, e.g., 01)
   --iteration N         Iteration number
+  --base-branch NAME    Base branch for scope-check (default: main)
   --help                Show this help
 EOF
 }
@@ -287,6 +290,60 @@ ENDBLOCK
 
 current_sha() {
   git rev-parse HEAD 2>/dev/null
+}
+
+cmd_scope_check() {
+  local base_branch="main"
+  local i=0
+  while [[ $i -lt ${#EXTRA_ARGS[@]} ]]; do
+    case "${EXTRA_ARGS[$i]}" in
+      --base-branch)
+        base_branch="${EXTRA_ARGS[$((i+1))]}"
+        i=$((i+2))
+        ;;
+      *)
+        echo "Error: Unknown scope-check option: ${EXTRA_ARGS[$i]}" >&2
+        exit 1
+        ;;
+    esac
+  done
+
+  if [[ -z "$base_branch" || "$base_branch" == *".."* || "$base_branch" == -* ]]; then
+    echo "Error: invalid base branch: ${base_branch}" >&2
+    exit 1
+  fi
+
+  git fetch --quiet origin "$base_branch"
+
+  local base_ref="origin/${base_branch}"
+  if ! git rev-parse --verify --quiet "$base_ref" >/dev/null; then
+    echo "Error: base ref not found after fetch: ${base_ref}" >&2
+    exit 1
+  fi
+
+  local merge_base
+  merge_base="$(git merge-base "$base_ref" HEAD)"
+
+  local files
+  files="$(git diff --name-only "${merge_base}..HEAD")"
+
+  local count
+  if [[ -n "$files" ]]; then
+    count="$(printf '%s\n' "$files" | sed '/^$/d' | wc -l | tr -d ' ')"
+  else
+    count=0
+  fi
+
+  cat <<ENDOUT
+SCOPE_CHECK_OK
+BASE_BRANCH=${base_branch}
+BASE_REF=${base_ref}
+MERGE_BASE=${merge_base}
+IN_SCOPE_FILE_COUNT=${count}
+IN_SCOPE_FILES_BEGIN
+${files}
+IN_SCOPE_FILES_END
+ENDOUT
 }
 
 extract_markdown_verdict() {
@@ -2179,6 +2236,7 @@ case "$COMMAND" in
   abort)                cmd_abort ;;
   assemble-context)     cmd_assemble_context ;;
   assemble-retro-input) cmd_assemble_retro_input ;;
+  scope-check)          cmd_scope_check ;;
   validate-transition)  cmd_validate_transition ;;
   --help)               usage ;;
   *)

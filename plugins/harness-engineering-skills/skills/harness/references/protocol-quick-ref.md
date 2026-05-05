@@ -524,6 +524,31 @@ When `aborted` is `true`, the checkpoint is terminal — skipped by status, vali
 
 ---
 
+## scope-check
+
+`harness-engine.sh scope-check --base-branch <branch>` is the deterministic
+scope-discipline primitive for changed-file discovery. It must run
+`git fetch origin <base>` before computing the merge base, then compare `HEAD`
+against `origin/<base>` rather than trusting a possibly stale local base branch.
+
+Output shape:
+
+```text
+SCOPE_CHECK_OK
+BASE_BRANCH=<branch>
+BASE_REF=origin/<branch>
+MERGE_BASE=<sha>
+IN_SCOPE_FILE_COUNT=<N>
+IN_SCOPE_FILES_BEGIN
+<one changed path per line>
+IN_SCOPE_FILES_END
+```
+
+Use this primitive when a checkpoint or review gate needs a scope file list
+against the upstream base branch.
+
+---
+
 ## retro-input.md (Orchestrator assembles)
 
 ```yaml
