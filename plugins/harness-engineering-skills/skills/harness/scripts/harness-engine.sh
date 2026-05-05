@@ -1593,6 +1593,7 @@ spec_path = sys.argv[1]
 cp_num = sys.argv[2]
 with open(spec_path) as f:
     lines = f.read().splitlines()
+fence_re = re.compile(r'^\s*' + chr(96) + r'{3,}')
 
 start = None
 start_re = re.compile(r'^### Checkpoint 0*' + re.escape(cp_num) + r':')
@@ -1609,7 +1610,7 @@ end = len(lines)
 in_fence = False
 for idx in range(start + 1, len(lines)):
     line = lines[idx]
-    if re.match(r'^\s*\`{3,}', line):
+    if fence_re.match(line):
         in_fence = not in_fence
     if in_fence:
         continue
@@ -1635,6 +1636,7 @@ import re, sys
 spec_path, cp_num, checkpoint = sys.argv[1:4]
 with open(spec_path) as f:
     lines = f.read().splitlines()
+fence_re = re.compile(r'^\s*' + chr(96) + r'{3,}')
 
 start = None
 start_re = re.compile(r'^### Checkpoint 0*' + re.escape(cp_num) + r':')
@@ -1647,7 +1649,7 @@ end = len(lines)
 in_fence = False
 for idx in range((start or 0) + 1, len(lines)):
     line = lines[idx]
-    if re.match(r'^\s*\`{3,}', line):
+    if fence_re.match(line):
         in_fence = not in_fence
     if in_fence:
         continue
@@ -1658,8 +1660,14 @@ for idx in range((start or 0) + 1, len(lines)):
 type_line = None
 invalid_line = None
 valid = {'frontend', 'backend', 'fullstack', 'infrastructure'}
+in_fence = False
 for idx in range(start or 0, end):
     line = lines[idx]
+    if fence_re.match(line):
+        in_fence = not in_fence
+        continue
+    if in_fence:
+        continue
     match = re.match(r'^\s*-\s*(?:\*\*)?Type(?:\*\*)?\s*:\s*([A-Za-z_-]+)\b', line)
     if match:
         value = match.group(1).lower()

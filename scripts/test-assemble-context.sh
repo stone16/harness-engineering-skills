@@ -147,4 +147,40 @@ if grep -q "next fixture" "$repo_root/.harness/$code_task/checkpoints/01/context
   exit 1
 fi
 
+fenced_type_task="assemble-context-fenced-type-$$"
+new_task "$fenced_type_task"
+cat > "$repo_root/.harness/$fenced_type_task/spec.md" <<'SPEC'
+---
+task_id: assemble-context-fenced-type
+title: fenced Type fixture
+version: 1
+status: approved
+branch: test
+---
+
+## Goal
+
+Exercise checkpoint parsing with markdown-looking Type examples.
+
+## Checkpoints
+
+### Checkpoint 01: fixture checkpoint
+
+- Scope: fixture scope with a fenced Type example before real metadata
+- Depends on: none
+
+```markdown
+- Type: frontend
+```
+
+- Type: backend
+- Acceptance criteria:
+  - [ ] keep acceptance bullet after fenced Type example
+- Files of interest:
+  - fixture.txt
+- Effort estimate: S
+SPEC
+
+assert_context_type "$fenced_type_task" "backend"
+
 echo "assemble-context parser tests passed"
