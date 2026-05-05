@@ -571,8 +571,22 @@ values are filing errors to record in Filed Issues, not defaults to `host`.
 
 Extraction: parse the markdown body field with
 `^- \*\*target_repo\*\*:[[:space:]]*(.*)$`, trim surrounding whitespace,
+strip one optional matching pair of surrounding ASCII quotes or backticks,
+strip one trailing `# comment` when the `#` is preceded by whitespace,
 lowercase the value, and accept only `harness`, `host`, or `both`. Any other
-value, including an empty match, is an invalid `target_repo`.
+value, including an empty match, is an invalid `target_repo`. This decorated
+form tolerance is compatibility only; the canonical body field remains the
+bare enum value.
+
+Each `scripts/file-retro-issue.sh` invocation writes exactly one stdout summary
+line for operator observability:
+
+```text
+proposal=N target=<harness|host|both|invalid|missing> url=<url|none> labels=<ok|partial|skipped>
+```
+
+The Filed Issues ledger remains the canonical durable record; stdout is a live
+run summary and may be captured by orchestrators.
 
 For `target_repo: both`, file one issue in `HARNESS_TARGET_REPO` and one in
 the host repo, then update both bodies with `Cross-filed: <other_url>`. The

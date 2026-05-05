@@ -113,7 +113,7 @@ PATH="$tmpdir:$PATH" \
   BODY_FILE="$body" \
   FILED_ISSUES_FILE="$filed" \
   HARNESS_TARGET_REPO="stone16/harness-engineering-skills" \
-  "$repo_root/scripts/file-retro-issue.sh"
+  "$repo_root/scripts/file-retro-issue.sh" >> "$stdout_log"
 
 PATH="/usr/bin:/bin" \
   FAKE_GH_LOG="$gh_log" \
@@ -125,7 +125,7 @@ PATH="/usr/bin:/bin" \
   BODY_FILE="$body" \
   FILED_ISSUES_FILE="$filed" \
   HARNESS_TARGET_REPO="stone16/harness-engineering-skills" \
-  "$repo_root/scripts/file-retro-issue.sh"
+  "$repo_root/scripts/file-retro-issue.sh" >> "$stdout_log"
 
 expected="$tmpdir/expected.md"
 cat > "$expected" <<'EOF'
@@ -159,7 +159,7 @@ EOF
 diff -u "$expected" "$filed"
 
 invocations="$(wc -l < "$stdout_log" | tr -d ' ')"
-if [[ "$invocations" != "26" ]]; then
+if [[ "$invocations" != "23" ]]; then
   echo "expected one stdout summary per invocation; got $invocations" >&2
   cat "$stdout_log" >&2
   exit 1
@@ -171,15 +171,21 @@ fi
 grep -q '^proposal=retryThenOk target=harness url=https://github.com/stone16/harness-engineering-skills/issues/10 labels=ok$' "$stdout_log"
 
 : > "$gh_log"
-PATH="$tmpdir:$PATH" \
-  FAKE_GH_LOG="$gh_log" \
-  FAKE_RETRY_STATE="$retry_state" \
-  BODY_FILE="$body" \
-  FILED_ISSUES_FILE="$filed" \
-  HOST_TARGET_REPO="host/repo" \
-  HARNESS_TARGET_REPO="stone16/harness-engineering-skills" \
-  HARNESS_FILE_RETRO_ISSUE_SOURCE_ONLY=true \
-  source "$repo_root/scripts/file-retro-issue.sh"
+PATH="$tmpdir:$PATH"
+FAKE_GH_LOG="$gh_log"
+FAKE_RETRY_STATE="$retry_state"
+FAKE_GH_MODE="ok"
+HARNESS_RETRY_SLEEP="0"
+BODY_FILE="$body"
+FILED_ISSUES_FILE="$filed"
+TARGET_REPO="harness"
+PROPOSAL_INDEX="cache"
+TITLE="Title cache"
+HOST_TARGET_REPO="host/repo"
+HARNESS_TARGET_REPO="stone16/harness-engineering-skills"
+HARNESS_FILE_RETRO_ISSUE_SOURCE_ONLY=true
+export FAKE_GH_LOG FAKE_RETRY_STATE FAKE_GH_MODE HARNESS_RETRY_SLEEP
+source "$repo_root/scripts/file-retro-issue.sh"
 ensure_label harness
 ensure_label harness
 label_view_count="$(grep -c '^label view harness-retro --repo stone16/harness-engineering-skills$' "$gh_log" || true)"
