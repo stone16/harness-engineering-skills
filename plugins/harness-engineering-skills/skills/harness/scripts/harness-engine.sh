@@ -1582,7 +1582,8 @@ cmd_assemble_context() {
     exit 1
   fi
 
-  # Extract checkpoint section from spec (between ### Checkpoint NN: and next ### or ---)
+  # Extract checkpoint section from spec, ignoring markdown-looking headings in
+  # fenced code blocks.
   local cp_num_int
   cp_num_int=$(echo "$CHECKPOINT" | sed 's/^0*//')
   local checkpoint_section
@@ -1591,14 +1592,32 @@ import re, sys
 spec_path = sys.argv[1]
 cp_num = sys.argv[2]
 with open(spec_path) as f:
-    content = f.read()
-pattern = r'(### Checkpoint 0*' + re.escape(cp_num) + r':.*?)(?=### Checkpoint [0-9]|## [^#]|---|\Z)'
-match = re.search(pattern, content, re.DOTALL)
-if match:
-    print(match.group(1).strip())
-else:
+    lines = f.read().splitlines()
+
+start = None
+start_re = re.compile(r'^### Checkpoint 0*' + re.escape(cp_num) + r':')
+for idx, line in enumerate(lines):
+    if start_re.match(line):
+        start = idx
+        break
+
+if start is None:
     print('ERROR: Could not extract checkpoint section')
     sys.exit(1)
+
+end = len(lines)
+in_fence = False
+for idx in range(start + 1, len(lines)):
+    line = lines[idx]
+    if re.match(r'^\s*\`{3,}', line):
+        in_fence = not in_fence
+    if in_fence:
+        continue
+    if re.match(r'^### Checkpoint [0-9]', line) or re.match(r'^## [^#]', line) or re.match(r'^---\s*$', line):
+        end = idx
+        break
+
+print('\n'.join(lines[start:end]).strip())
 " "$spec" "$cp_num_int")
 
   if [[ $? -ne 0 || "$checkpoint_section" == ERROR:* ]]; then
@@ -1607,17 +1626,55 @@ else:
     exit 1
   fi
 
-  # Detect checkpoint type from section
-  local checkpoint_type="unknown"
-  if echo "$checkpoint_section" | grep -qi "Type:.*frontend"; then
-    checkpoint_type="frontend"
-  elif echo "$checkpoint_section" | grep -qi "Type:.*backend"; then
-    checkpoint_type="backend"
-  elif echo "$checkpoint_section" | grep -qi "Type:.*fullstack"; then
-    checkpoint_type="fullstack"
-  elif echo "$checkpoint_section" | grep -qi "Type:.*infra"; then
-    checkpoint_type="infrastructure"
-  fi
+  # Detect checkpoint type from the real checkpoint section only. Accept the
+  # canonical '- Type:' form and one bold-decorated '- **Type**:' compatibility
+  # form, but fail loudly instead of emitting checkpoint_type: unknown.
+  local checkpoint_type
+  checkpoint_type=$(python3 -c "
+import re, sys
+spec_path, cp_num, checkpoint = sys.argv[1:4]
+with open(spec_path) as f:
+    lines = f.read().splitlines()
+
+start = None
+start_re = re.compile(r'^### Checkpoint 0*' + re.escape(cp_num) + r':')
+for idx, line in enumerate(lines):
+    if start_re.match(line):
+        start = idx
+        break
+
+end = len(lines)
+in_fence = False
+for idx in range((start or 0) + 1, len(lines)):
+    line = lines[idx]
+    if re.match(r'^\s*\`{3,}', line):
+        in_fence = not in_fence
+    if in_fence:
+        continue
+    if re.match(r'^### Checkpoint [0-9]', line) or re.match(r'^## [^#]', line) or re.match(r'^---\s*$', line):
+        end = idx
+        break
+
+type_line = None
+invalid_line = None
+valid = {'frontend', 'backend', 'fullstack', 'infrastructure'}
+for idx in range(start or 0, end):
+    line = lines[idx]
+    match = re.match(r'^\s*-\s*(?:\*\*)?Type(?:\*\*)?\s*:\s*([A-Za-z_-]+)\b', line)
+    if match:
+        value = match.group(1).lower()
+        if value in valid:
+            type_line = value
+            break
+        invalid_line = idx + 1
+
+if type_line:
+    print(type_line)
+else:
+    line_no = invalid_line or ((start or 0) + 1)
+    print(f'Error: checkpoint {checkpoint} missing or invalid Type field at {spec_path}:{line_no}', file=sys.stderr)
+    sys.exit(1)
+" "$spec" "$cp_num_int" "$CHECKPOINT") || exit 1
 
   # Build Prior Progress from completed checkpoint status.md files
   local prior_progress=""

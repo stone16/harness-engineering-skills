@@ -59,6 +59,12 @@ For each checkpoint evaluate:
      Card-based tier attribution for this round.
 3. **Dependencies** — are inter-checkpoint dependencies explicit? Is the ordering correct?
 4. **Type accuracy** — is `frontend | backend | fullstack | infrastructure` correctly assigned?
+   - **Canonical Type shape audit** — checkpoint metadata should use the
+     canonical `- Type: <value>` form. If a checkpoint uses a non-canonical
+     but engine-compatible decorated form such as `- **Type**: <value>`, emit
+     a `severity: warning` concern with `suggested_fix: normalize the line to
+     '- Type: <value>' so planner, engine, and downstream tools share one
+     canonical shape`.
 5. **Files of interest** — are the affected files listed? Are any missing?
 
 ### Phase 3: Cybernetic Completeness

@@ -30,6 +30,12 @@ Sections: Goal, Success Criteria, Checkpoints, Technical Approach, Out of Scope,
 ```
 Each checkpoint MUST use `### Checkpoint NN: <title>` heading (zero-padded number). The engine uses this exact pattern for `assemble-context` extraction.
 
+The canonical Type metadata shape is `- Type: <value>`. The engine accepts one
+compatibility form, `- **Type**: <value>`, to prevent legacy specs from
+silently degrading to `checkpoint_type: unknown`; the Spec Evaluator still
+warns on that decorated form and recommends normalizing to the canonical line.
+Missing or invalid Type metadata is an engine error, not an `unknown` fallback.
+
 ### Evidence Requirements (enforced by Spec Evaluator Phase 5)
 
 Whenever the spec asserts that a decision, threshold, design, or value was
