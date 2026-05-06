@@ -572,6 +572,7 @@ Sections:
 - `begin-full-verify` — requires phase `review-loop`, sets phase to `full-verify`, creates `full-verify/` directory
 - `pass-full-verify` — requires `full-verify/iter-N/verification-report.md` with verdict PASS or PASS_WITH_WARNINGS, rejects stale artifacts, records final SHA
 - `skip-full-verify` — only allowed when `skip_full_verify=true` in config, sets phase to `full-verify`
+- `create-pr --base <branch> --title <title> --body <body>` — requires completed or skipped full-verify; either creates a PR and prints `CREATE_PR_OK` + `PR_URL=<url>`, or writes `.harness/<task-id>/pr-handoff.md` and prints `PR_HANDOFF_OK` when `autonomous_pr=false`
 - `pass-pr --pr-url <url>` — records PR URL, sets phase to `pr`
 - `complete` — sets phase to `done`
 

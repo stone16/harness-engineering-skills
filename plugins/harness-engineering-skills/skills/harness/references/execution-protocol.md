@@ -194,9 +194,24 @@ One match → load. Multiple → ask user. None → inform user.
      - Test pass count + coverage % from full-verify
      - For UI checkpoints: embed screenshots from evidence/ directories
      - For API checkpoints: include sample request/response output
-   → Use `superpowers:finishing-a-development-branch` or `ship` if available
-   → $ENGINE pass-pr --task-id <id> --pr-url <url>
-     (engine requires the PR URL as proof — phase blocks retro until PR is recorded)
+   → Invoke the engine PR primitive:
+     ```
+     $ENGINE create-pr --task-id <id> --base <base-branch> \
+       --title "<title>" --body "<body>"
+     ```
+   → If output contains `CREATE_PR_OK`:
+     - Extract `PR_URL=<url>` from the engine output
+     - Run `$ENGINE pass-pr --task-id <id> --pr-url <url>`
+       (engine requires the PR URL as proof — phase blocks retro until PR is recorded)
+   → If output contains `PR_HANDOFF_OK`:
+     - Open `.harness/<task-id>/pr-handoff.md`
+     - Follow the handoff command to create the PR manually
+     - Only after a real PR URL exists, run
+       `$ENGINE pass-pr --task-id <id> --pr-url <url>`
+     - Do not call `pass-pr` with a placeholder URL
+   → Do not bypass `create-pr` with `ship`, `superpowers:finishing-a-development-branch`,
+     or direct `gh pr create`; those may be used only as manual aids after
+     `PR_HANDOFF_OK` has explicitly selected the handoff path
 
 8. Retro (proceed automatically — do NOT ask user before running retro):
    → $ENGINE assemble-retro-input --task-id <id>
@@ -250,7 +265,7 @@ Each downstream command checks the current phase before executing. If the phase 
 | checkpoints → e2e | `pass-e2e` | E2E evaluator passes |
 | e2e → review-loop | `pass-review-loop` or `skip-review-loop` | Artifact files exist / config allows skip |
 | review-loop → full-verify | `begin-full-verify` (then `pass-full-verify` or `skip-full-verify`) | Fresh verification report with PASS verdict / config allows skip |
-| full-verify → pr | `pass-pr --pr-url <url>` | PR URL provided |
+| full-verify → pr | `create-pr` then `pass-pr --pr-url <url>` | `CREATE_PR_OK` provides PR URL, or `PR_HANDOFF_OK` writes handoff and `pass-pr` waits for a real URL |
 | pr → retro | `assemble-retro-input` | Automatic |
 | retro → done | `complete` | Retro has run |
 
