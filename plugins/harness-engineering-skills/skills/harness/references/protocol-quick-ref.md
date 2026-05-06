@@ -192,6 +192,24 @@ Sections:
 - **Effort Estimate**: S/M/L per checkpoint
 - **Failure Modes**: one realistic production failure scenario per checkpoint
 
+### Spec Evaluator pre-execution warnings
+
+The Spec Evaluator emits warning-level concerns for these mechanical
+pre-execution hazards before a Generator starts:
+
+- `cross-CP artifact ownership conflict` flags the same artifact path, table,
+  index, public symbol, or other named ownership surface appearing in two or
+  more checkpoints without an explicit lifecycle split. Source: issue #24.
+- `literal localhost port without override` flags literal
+  `localhost:<well-known-port>` values (`5432`, `5433`, `6379`, `8000`,
+  `8080`, `9092`) that lack an environment-variable override surface or
+  testcontainer-equivalent path. Source: issue #21.
+- `executable SDK/API citation` flags spec lines that name a specific SDK
+  class, function, shell flag, import path, or provider API shape the Generator
+  will execute without a verified installed-version citation or an explicit
+  `approximate / canonical resolution by Generator` annotation. Source: issue
+  #16.
+
 ---
 
 ## round-N-planner-response.md (spec-review/)
