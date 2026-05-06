@@ -32,6 +32,32 @@ ENGINE="$HARNESS_DIR/scripts/harness-engine.sh"
 CLAUDE_AGENT="$HARNESS_DIR/scripts/claude-agent-invoke.sh"
 ```
 
+## Sub-agent Mode Expectations
+
+At the start of any `harness continue` run, the Codex host emits an
+early-run status marker naming the execution mode:
+
+```text
+HARNESS_SUBAGENT_MODE=subagents
+```
+
+or:
+
+```text
+HARNESS_SUBAGENT_MODE=main-session-fallback
+```
+
+The explicit fallback rule is: when a required sub-agent dispatch path is
+available (`claude-agent-invoke.sh` plus the target agent definition), use it;
+when it is missing, unavailable, or returns a tooling/runtime error before the
+agent can produce the required artifact, stop at the relevant protocol gate and
+record `main-session-fallback` rather than silently self-evaluating. Source:
+issue #14.
+
+Main-session fallback may continue only for Generator work that the Codex host
+is already allowed to perform locally. It must not write evaluator-owned
+artifacts such as `evaluation.md`, `e2e-report.md`, or retro outputs.
+
 ## Planning in Codex
 
 1. Clarify requirements directly with the user.

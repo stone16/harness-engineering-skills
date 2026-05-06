@@ -219,7 +219,7 @@ are in play simultaneously.
 
 - **Scope**: Import useScreenPadding and apply to 2 community screens
 - **Depends on**: CP01 (hook creation)
-- **Type**: frontend
+- Type: frontend
 - **Acceptance criteria**:
   - [ ] index.tsx calls useScreenPadding() and applies returned padding
   - [ ] post-detail.tsx calls useScreenPadding() and applies returned padding

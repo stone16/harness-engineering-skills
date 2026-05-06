@@ -58,7 +58,35 @@ For each checkpoint evaluate:
      `complete`, record `Card unavailable - attribution deferred`; do not use
      Card-based tier attribution for this round.
 3. **Dependencies** — are inter-checkpoint dependencies explicit? Is the ordering correct?
+   - **cross-CP artifact ownership conflict** — detects the same artifact
+     path, table, index, public symbol, or other named ownership surface being
+     mentioned by two or more checkpoints without an explicit lifecycle split
+     (create/update/finalize, producer/consumer, migration/use). Emit
+     `severity: warning` with `suggested_fix: assign one checkpoint as owner
+     of the artifact lifecycle and make later checkpoints consume or extend it
+     explicitly, or split the artifact into separately named surfaces`.
+   - **literal localhost port without override** — detects literal
+     `localhost:<well-known-port>` values (`5432`, `5433`, `6379`, `8000`,
+     `8080`, `9092`) without an environment-variable override surface such as
+     `localhost:${SERVICE_PORT:-<default>}` or a testcontainer-equivalent
+     isolation path. Emit `severity: warning` with `suggested_fix: replace the
+     literal localhost port with an env-var override or cite the
+     testcontainer-equivalent path the Generator should use`.
+   - **executable SDK/API citation** — detects spec lines naming a specific
+     SDK class, function, shell flag, import path, or provider API shape that
+     the Generator will execute, without either a verified installed-version
+     citation or an explicit `approximate / canonical resolution by Generator`
+     annotation. Emit `severity: warning` with `suggested_fix: add a verified
+     installed-version citation for the executable API, or mark the name as
+     approximate and instruct the Generator to resolve the canonical API from
+     the installed package/docs before implementation`.
 4. **Type accuracy** — is `frontend | backend | fullstack | infrastructure` correctly assigned?
+   - **Canonical Type shape audit** — checkpoint metadata should use the
+     canonical `- Type: <value>` form. If a checkpoint uses a non-canonical
+     but engine-compatible decorated form such as `- **Type**: <value>`, emit
+     a `severity: warning` concern with `suggested_fix: normalize the line to
+     '- Type: <value>' so planner, engine, and downstream tools share one
+     canonical shape`.
 5. **Files of interest** — are the affected files listed? Are any missing?
 
 ### Phase 3: Cybernetic Completeness

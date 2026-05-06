@@ -2,6 +2,11 @@
 set -uo pipefail
 
 TMP_BODIES=()
+LABEL_CACHE_KEYS=()
+LABEL_CACHE_VALUES=()
+SUMMARY_TARGET="missing"
+SUMMARY_URL="none"
+SUMMARY_LABELS="skipped"
 cleanup_tmp_bodies() {
   if ((${#TMP_BODIES[@]})); then
     rm -f "${TMP_BODIES[@]}"
@@ -14,7 +19,52 @@ sanitize_line() {
 }
 
 normalize_target_repo() {
-  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//'
+  local value
+  value="$(printf '%s' "$1" | sed 's/[[:space:]]#.*$//; s/^[[:space:]]*//; s/[[:space:]]*$//')"
+  case "$value" in
+    \'*\' | \"*\" | \`*\`)
+      if [[ ${#value} -ge 2 && "${value:0:1}" == "${value: -1}" ]]; then
+        value="${value:1:${#value}-2}"
+      fi
+      ;;
+  esac
+  printf '%s' "$value" | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//'
+}
+
+_gh_with_retry() {
+  local attempt delay
+  local delays=(1 2 4)
+  for attempt in 0 1 2; do
+    if gh "$@"; then
+      return 0
+    fi
+    delay="${HARNESS_RETRY_SLEEP:-${delays[$attempt]}}"
+    [[ "$attempt" -lt 2 && "$delay" != "0" ]] && sleep "$delay"
+  done
+  return 1
+}
+
+label_cache_get() {
+  local key="$1" i
+  for i in "${!LABEL_CACHE_KEYS[@]}"; do
+    if [[ "${LABEL_CACHE_KEYS[$i]}" == "$key" ]]; then
+      printf '%s\n' "${LABEL_CACHE_VALUES[$i]}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+label_cache_set() {
+  local key="$1" value="$2" i
+  for i in "${!LABEL_CACHE_KEYS[@]}"; do
+    if [[ "${LABEL_CACHE_KEYS[$i]}" == "$key" ]]; then
+      LABEL_CACHE_VALUES[$i]="$value"
+      return 0
+    fi
+  done
+  LABEL_CACHE_KEYS+=("$key")
+  LABEL_CACHE_VALUES+=("$value")
 }
 
 RAW_TARGET_REPO="$(sanitize_line "${TARGET_REPO-}")"
@@ -69,15 +119,27 @@ ensure_host_target_repo() {
 
 ensure_label() {
   local target="$1"
+  [[ "${LABEL_READY:-}" == "true" ]] && return 0
+  local repo
   if [[ "$target" == "harness" ]]; then
-    gh label view "harness-retro" --repo "$HARNESS_TARGET_REPO" >/dev/null 2>&1 ||
-      gh label create "harness-retro" --repo "$HARNESS_TARGET_REPO" --color "5319e7" --description "Harness retro follow-up" >/dev/null 2>&1 ||
-      gh label view "harness-retro" --repo "$HARNESS_TARGET_REPO" >/dev/null 2>&1
+    repo="$HARNESS_TARGET_REPO"
   else
-    gh label view "harness-retro" --repo "$HOST_TARGET_REPO" >/dev/null 2>&1 ||
-      gh label create "harness-retro" --repo "$HOST_TARGET_REPO" --color "5319e7" --description "Harness retro follow-up" >/dev/null 2>&1 ||
-      gh label view "harness-retro" --repo "$HOST_TARGET_REPO" >/dev/null 2>&1
+    repo="$HOST_TARGET_REPO"
   fi
+  local cache_key="${repo}::harness-retro"
+  local cached
+  if cached="$(label_cache_get "$cache_key")"; then
+    [[ "$cached" == "true" ]]
+    return
+  fi
+  if _gh_with_retry label view "harness-retro" --repo "$repo" >/dev/null 2>&1 ||
+    _gh_with_retry label create "harness-retro" --repo "$repo" --color "5319e7" --description "Harness retro follow-up" >/dev/null 2>&1 ||
+    _gh_with_retry label view "harness-retro" --repo "$repo" >/dev/null 2>&1; then
+    label_cache_set "$cache_key" "true"
+    return 0
+  fi
+  label_cache_set "$cache_key" "false"
+  return 1
 }
 
 create_issue() {
@@ -89,7 +151,18 @@ create_issue() {
   [[ "$target" == "harness" ]] && repo="$HARNESS_TARGET_REPO" || repo="$HOST_TARGET_REPO"
   args=(--repo "$repo" --title "$TITLE" --body-file "$BODY_FILE")
   [[ "$label_ready" == "true" ]] && args+=(--label "harness-retro")
+  # `gh issue create` is not idempotent: a transient client-side failure after
+  # GitHub accepts the request can create duplicates if blindly retried.
   gh issue create "${args[@]}"
+}
+
+set_cross_repo_summary() {
+  local harness_url="$1"
+  local host_url="$2"
+  local labels="$3"
+  SUMMARY_TARGET="both"
+  SUMMARY_URL="${harness_url:-${host_url:-none}}"
+  SUMMARY_LABELS="$labels"
 }
 
 file_single_repo_issue() {
@@ -100,11 +173,17 @@ file_single_repo_issue() {
   url="$(create_issue "$target" "$label_ready")" || url=""
   if [[ -z "$url" ]]; then
     record_filed_issue "- Proposal $PROPOSAL_INDEX (skipped, $target create failed): $TITLE"
+    SUMMARY_TARGET="$target"
+    SUMMARY_URL="none"
+    SUMMARY_LABELS="skipped"
     return 0
   fi
   label_note=""
   [[ "$label_ready" != "true" ]] && label_note=", label not applied"
   record_filed_issue "- Proposal $PROPOSAL_INDEX ($target$label_note): $url"
+  SUMMARY_TARGET="$target"
+  SUMMARY_URL="$url"
+  [[ "$label_ready" == "true" ]] && SUMMARY_LABELS="ok" || SUMMARY_LABELS="partial"
 }
 
 annotate_partial_cross_file() {
@@ -121,7 +200,7 @@ annotate_partial_cross_file() {
     return 0
   }
   printf '\nCross-filed: pending - %s create failed; see retro index proposal %s.\n' "$missing_target" "$PROPOSAL_INDEX" >> "$body"
-  gh issue edit "$url" --body-file "$body" >/dev/null 2>&1 ||
+  _gh_with_retry issue edit "$url" --body-file "$body" >/dev/null 2>&1 ||
     record_filed_issue "- Proposal $PROPOSAL_INDEX (both, annotation failed): $url"
   rm -f "$body"
 }
@@ -133,11 +212,17 @@ file_harness_when_host_unresolved() {
   harness_url="$(create_issue harness "$harness_label")" || harness_url=""
   if [[ -z "$harness_url" ]]; then
     record_filed_issue "- Proposal $PROPOSAL_INDEX (both, host repo unresolved, harness create failed): no-harness-url | no-host-url"
+    SUMMARY_TARGET="both"
+    SUMMARY_URL="none"
+    SUMMARY_LABELS="skipped"
     return 0
   fi
   label_note=""
   [[ "$harness_label" != "true" ]] && label_note=", labels harness=false"
   record_filed_issue "- Proposal $PROPOSAL_INDEX (both$label_note, host repo unresolved): $harness_url | no-host-url"
+  SUMMARY_TARGET="both"
+  SUMMARY_URL="$harness_url"
+  [[ "$harness_label" == "true" ]] && SUMMARY_LABELS="ok" || SUMMARY_LABELS="partial"
 }
 
 file_cross_repo_issue() {
@@ -155,26 +240,33 @@ file_cross_repo_issue() {
     [[ -n "$host_url" ]] && annotate_partial_cross_file "$host_url" "harness"
     [[ -n "$harness_url" ]] && annotate_partial_cross_file "$harness_url" "host"
     record_filed_issue "- Proposal $PROPOSAL_INDEX (both$label_note, partial create): ${harness_url:-no-harness-url} | ${host_url:-no-host-url}"
+    SUMMARY_TARGET="both"
+    SUMMARY_URL="${harness_url:-${host_url:-none}}"
+    [[ -n "$host_url" || -n "$harness_url" ]] && SUMMARY_LABELS="partial" || SUMMARY_LABELS="skipped"
     return 0
   fi
 
   harness_body="$(mktemp "${TMPDIR:-/tmp}/harness-retro-body.XXXXXX" 2>/dev/null)" || {
     record_filed_issue "- Proposal $PROPOSAL_INDEX (both, cross-link skipped, mktemp failed): $harness_url | $host_url"
+    set_cross_repo_summary "$harness_url" "$host_url" "partial"
     return 0
   }
   TMP_BODIES+=("$harness_body")
   host_body="$(mktemp "${TMPDIR:-/tmp}/harness-retro-body.XXXXXX" 2>/dev/null)" || {
     rm -f "$harness_body"
     record_filed_issue "- Proposal $PROPOSAL_INDEX (both, cross-link skipped, mktemp failed): $harness_url | $host_url"
+    set_cross_repo_summary "$harness_url" "$host_url" "partial"
     return 0
   }
   TMP_BODIES+=("$host_body")
   cp "$BODY_FILE" "$harness_body" || {
     record_filed_issue "- Proposal $PROPOSAL_INDEX (both, cross-link skipped, body copy failed): $harness_url | $host_url"
+    set_cross_repo_summary "$harness_url" "$host_url" "partial"
     return 0
   }
   cp "$BODY_FILE" "$host_body" || {
     record_filed_issue "- Proposal $PROPOSAL_INDEX (both, cross-link skipped, body copy failed): $harness_url | $host_url"
+    set_cross_repo_summary "$harness_url" "$host_url" "partial"
     return 0
   }
   printf '\nCross-filed: %s\n' "$host_url" >> "$harness_body"
@@ -182,8 +274,8 @@ file_cross_repo_issue() {
 
   harness_edit=ok
   host_edit=ok
-  gh issue edit "$harness_url" --body-file "$harness_body" >/dev/null 2>&1 || harness_edit=failed
-  gh issue edit "$host_url" --body-file "$host_body" >/dev/null 2>&1 || host_edit=failed
+  _gh_with_retry issue edit "$harness_url" --body-file "$harness_body" >/dev/null 2>&1 || harness_edit=failed
+  _gh_with_retry issue edit "$host_url" --body-file "$host_body" >/dev/null 2>&1 || host_edit=failed
   rm -f "$harness_body" "$host_body"
 
   if [[ "$harness_edit" != "ok" || "$host_edit" != "ok" ]]; then
@@ -191,10 +283,20 @@ file_cross_repo_issue() {
   else
     record_filed_issue "- Proposal $PROPOSAL_INDEX (both$label_note): $harness_url | $host_url"
   fi
+  SUMMARY_TARGET="both"
+  SUMMARY_URL="$harness_url"
+  [[ "$harness_label" == "true" && "$host_label" == "true" && "$harness_edit" == "ok" && "$host_edit" == "ok" ]] && SUMMARY_LABELS="ok" || SUMMARY_LABELS="partial"
 }
 
 file_retro_issue() {
-  command -v gh >/dev/null || { record_filed_issue "- Proposal $PROPOSAL_INDEX (skipped): gh CLI unavailable"; return 0; }
+  SUMMARY_TARGET="$TARGET_REPO"
+  command -v gh >/dev/null || {
+    record_filed_issue "- Proposal $PROPOSAL_INDEX (skipped): gh CLI unavailable"
+    SUMMARY_TARGET="${TARGET_REPO:-missing}"
+    SUMMARY_URL="none"
+    SUMMARY_LABELS="skipped"
+    return 0
+  }
 
   case "$TARGET_REPO" in
     host)
@@ -202,6 +304,9 @@ file_retro_issue() {
         file_single_repo_issue "$TARGET_REPO"
       else
         record_filed_issue "- Proposal $PROPOSAL_INDEX (skipped, host repo unresolved): $TITLE"
+        SUMMARY_TARGET="host"
+        SUMMARY_URL="none"
+        SUMMARY_LABELS="skipped"
       fi
       ;;
     harness) file_single_repo_issue "$TARGET_REPO" ;;
@@ -212,8 +317,16 @@ file_retro_issue() {
         file_harness_when_host_unresolved
       fi
       ;;
-    *) record_filed_issue "- Proposal $PROPOSAL_INDEX (skipped, invalid target_repo='$RAW_TARGET_REPO'): $TITLE" ;;
+    *)
+      record_filed_issue "- Proposal $PROPOSAL_INDEX (skipped, invalid target_repo='$RAW_TARGET_REPO'): $TITLE"
+      [[ -z "$RAW_TARGET_REPO" ]] && SUMMARY_TARGET="missing" || SUMMARY_TARGET="invalid"
+      SUMMARY_URL="none"
+      SUMMARY_LABELS="skipped"
+      ;;
   esac
 }
 
-file_retro_issue
+if [[ "${HARNESS_FILE_RETRO_ISSUE_SOURCE_ONLY:-}" != "true" ]]; then
+  file_retro_issue
+  printf 'proposal=%s target=%s url=%s labels=%s\n' "$PROPOSAL_INDEX" "$SUMMARY_TARGET" "$SUMMARY_URL" "$SUMMARY_LABELS"
+fi

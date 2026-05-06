@@ -26,11 +26,13 @@ set -uo pipefail
 #   begin-full-verify   Start full-verify phase (record baseline SHA)
 #   pass-full-verify    Mark full-verify as PASS (requires verification-report.md)
 #   skip-full-verify    Skip full-verify (only if config enables skip)
+#   create-pr           Create PR or write manual handoff based on autonomous_pr
 #   pass-pr             Record PR URL, advance phase
 #   complete            Mark task as done
 #   abort               Git reset --hard to baseline_sha, mark ABORTED
 #   assemble-context    Extract checkpoint context from spec.md -> output context.md
 #   assemble-retro-input  Summarize all checkpoint data -> output retro-input.md
+#   scope-check         List files changed against freshly fetched origin/<base>
 #   validate-transition Check state transition legality
 
 # ============================================================================
@@ -155,6 +157,7 @@ DEFAULT_CLAUDE_MD_PATH="auto"
 DEFAULT_MAX_VERIFY_ROUNDS=3
 DEFAULT_COVERAGE_THRESHOLD=85
 DEFAULT_SKIP_FULL_VERIFY="false"
+DEFAULT_AUTONOMOUS_PR="true"
 
 # Global options
 TASK_ID=""
@@ -207,17 +210,20 @@ Commands:
   begin-full-verify     Start full-verify phase (record baseline SHA)
   pass-full-verify      Mark full-verify as PASS (requires verification-report.md)
   skip-full-verify      Skip full-verify (only if skip_full_verify=true in config)
+  create-pr             Create PR or write pr-handoff.md based on autonomous_pr
   pass-pr               Record PR URL, advance phase (--pr-url required)
   complete              Mark task as done (phase → done)
   abort                 Abort current checkpoint (git reset --hard)
   assemble-context      Build context.md for a checkpoint
   assemble-retro-input  Build retro-input.md for retrospective
+  scope-check           List changed files against freshly fetched origin/<base>
   validate-transition   Check if a state transition is legal
 
 Options:
   --task-id ID          Task identifier (required for most commands)
   --checkpoint NN       Checkpoint number (zero-padded, e.g., 01)
   --iteration N         Iteration number
+  --base-branch NAME    Base branch for scope-check (default: main)
   --help                Show this help
 EOF
 }
@@ -289,6 +295,76 @@ current_sha() {
   git rev-parse HEAD 2>/dev/null
 }
 
+require_next_arg() {
+  local option="$1"
+  local index="$2"
+  if [[ $((index + 1)) -ge ${#EXTRA_ARGS[@]} ]]; then
+    echo "Error: ${option} requires a value" >&2
+    exit 1
+  fi
+}
+
+cmd_scope_check() {
+  local base_branch="main"
+  local i=0
+  while [[ $i -lt ${#EXTRA_ARGS[@]} ]]; do
+    case "${EXTRA_ARGS[$i]}" in
+      --base-branch)
+        require_next_arg "--base-branch" "$i"
+        base_branch="${EXTRA_ARGS[$((i+1))]}"
+        i=$((i+2))
+        ;;
+      *)
+        echo "Error: Unknown scope-check option: ${EXTRA_ARGS[$i]}" >&2
+        exit 1
+        ;;
+    esac
+  done
+
+  if [[ -z "$base_branch" || "$base_branch" == *".."* || "$base_branch" == -* ]]; then
+    echo "Error: invalid base branch: ${base_branch}" >&2
+    exit 1
+  fi
+
+  if ! git fetch --quiet origin "$base_branch"; then
+    echo "Error: failed to fetch origin/${base_branch}" >&2
+    exit 1
+  fi
+
+  local base_ref="origin/${base_branch}"
+  if ! git rev-parse --verify --quiet "$base_ref" >/dev/null; then
+    echo "Error: base ref not found after fetch: ${base_ref}" >&2
+    exit 1
+  fi
+
+  local merge_base
+  if ! merge_base="$(git merge-base "$base_ref" HEAD)"; then
+    echo "Error: failed to compute merge-base between ${base_ref} and HEAD" >&2
+    exit 1
+  fi
+
+  local files
+  files="$(git diff --name-only "${merge_base}..HEAD")"
+
+  local count
+  if [[ -n "$files" ]]; then
+    count="$(printf '%s\n' "$files" | sed '/^$/d' | wc -l | tr -d ' ')"
+  else
+    count=0
+  fi
+
+  cat <<ENDOUT
+SCOPE_CHECK_OK
+BASE_BRANCH=${base_branch}
+BASE_REF=${base_ref}
+MERGE_BASE=${merge_base}
+IN_SCOPE_FILE_COUNT=${count}
+IN_SCOPE_FILES_BEGIN
+${files}
+IN_SCOPE_FILES_END
+ENDOUT
+}
+
 extract_markdown_verdict() {
   local file="$1"
   python3 - "$file" <<'PY'
@@ -330,6 +406,7 @@ cmd_read_config() {
   local max_verify_rounds="$DEFAULT_MAX_VERIFY_ROUNDS"
   local coverage_threshold="$DEFAULT_COVERAGE_THRESHOLD"
   local skip_full_verify="$DEFAULT_SKIP_FULL_VERIFY"
+  local autonomous_pr="$DEFAULT_AUTONOMOUS_PR"
 
   # Layer 2: .harness/config.json
   local config_file=".harness/config.json"
@@ -344,9 +421,13 @@ cmd_read_config() {
     val=$(json_get "$config_file" "max_verify_rounds") && [[ -n "$val" ]] && max_verify_rounds="$val"
     val=$(json_get "$config_file" "coverage_threshold") && [[ -n "$val" ]] && coverage_threshold="$val"
     val=$(json_get "$config_file" "skip_full_verify") && [[ -n "$val" ]] && skip_full_verify=$(echo "$val" | tr '[:upper:]' '[:lower:]')
+    val=$(json_get "$config_file" "autonomous_pr") && [[ -n "$val" ]] && autonomous_pr=$(echo "$val" | tr '[:upper:]' '[:lower:]')
   fi
 
   # Layer 3: CLI args (via EXTRA_ARGS)
+  # Schema fields: max_spec_rounds, max_eval_rounds, cross_model_review,
+  # cross_model_peer, auto_retro, claude_md_path, max_verify_rounds,
+  # coverage_threshold, skip_full_verify, autonomous_pr.
   local i=0
   while [[ $i -lt ${#EXTRA_ARGS[@]} ]]; do
     case "${EXTRA_ARGS[$i]}" in
@@ -359,6 +440,7 @@ cmd_read_config() {
       --max-verify-rounds) max_verify_rounds="${EXTRA_ARGS[$((i+1))]}"; i=$((i+2)) ;;
       --coverage-threshold) coverage_threshold="${EXTRA_ARGS[$((i+1))]}"; i=$((i+2)) ;;
       --skip-full-verify) skip_full_verify="${EXTRA_ARGS[$((i+1))]}"; i=$((i+2)) ;;
+      --autonomous-pr) autonomous_pr="$(echo "${EXTRA_ARGS[$((i+1))]}" | tr '[:upper:]' '[:lower:]')"; i=$((i+2)) ;;
       *) echo "Error: Unknown config option: ${EXTRA_ARGS[$i]}" >&2; exit 1 ;;
     esac
   done
@@ -374,6 +456,7 @@ CLAUDE_MD_PATH=${claude_md_path}
 MAX_VERIFY_ROUNDS=${max_verify_rounds}
 COVERAGE_THRESHOLD=${coverage_threshold}
 SKIP_FULL_VERIFY=${skip_full_verify}
+AUTONOMOUS_PR=${autonomous_pr}
 ENDCONFIG
 }
 
@@ -1366,6 +1449,134 @@ ENDOUT
 }
 
 # ============================================================================
+# Command: create-pr
+# ============================================================================
+
+cmd_create_pr() {
+  require_task_id
+  require_git_state
+  require_phase "full-verify" "Run: \$ENGINE pass-full-verify --task-id ${TASK_ID} (or skip-full-verify)"
+
+  local gs_check
+  gs_check="$(git_state_file)"
+  local fv_status
+  fv_status=$(json_get "$gs_check" "full_verify_status")
+  if [[ "$fv_status" != "COMPLETE" && "$fv_status" != "SKIPPED" ]]; then
+    echo "PHASE_BLOCKED" >&2
+    echo "REASON=full_verify_status is '${fv_status}' — full-verify must complete before PR creation" >&2
+    echo "NEXT_STEP=Run: \$ENGINE pass-full-verify --task-id ${TASK_ID} (or skip-full-verify)" >&2
+    exit 1
+  fi
+
+  local autonomous_pr="$DEFAULT_AUTONOMOUS_PR"
+  local config_file=".harness/config.json"
+  if [[ -f "$config_file" ]]; then
+    local val
+    val=$(json_get "$config_file" "autonomous_pr")
+    [[ -n "$val" ]] && autonomous_pr=$(echo "$val" | tr '[:upper:]' '[:lower:]')
+  fi
+
+  local base_branch="main"
+  local title="${TASK_ID}"
+  local body="Harness task ${TASK_ID}"
+  local i=0
+  while [[ $i -lt ${#EXTRA_ARGS[@]} ]]; do
+    case "${EXTRA_ARGS[$i]}" in
+      --base)
+        require_next_arg "--base" "$i"
+        base_branch="${EXTRA_ARGS[$((i+1))]}"
+        i=$((i+2))
+        ;;
+      --title)
+        require_next_arg "--title" "$i"
+        title="${EXTRA_ARGS[$((i+1))]}"
+        i=$((i+2))
+        ;;
+      --body)
+        require_next_arg "--body" "$i"
+        body="${EXTRA_ARGS[$((i+1))]}"
+        i=$((i+2))
+        ;;
+      *) echo "Error: Unknown create-pr option: ${EXTRA_ARGS[$i]}" >&2; exit 1 ;;
+    esac
+  done
+
+  local head_branch
+  head_branch="$(git rev-parse --abbrev-ref HEAD)"
+  local dir
+  dir="$(harness_dir)"
+  mkdir -p "$dir"
+
+  local body_file="${dir}/pr-body.md"
+  printf '%s\n' "$body" > "$body_file"
+
+  if [[ "$autonomous_pr" == "false" ]]; then
+    local handoff="${dir}/pr-handoff.md"
+    if [[ -f "$handoff" ]]; then
+      echo "Warning: pr-handoff.md exists; overwriting" >&2
+    fi
+    cat > "$handoff" <<ENDHANDOFF
+# PR Handoff
+
+Title: ${title}
+
+Body:
+
+${body}
+
+Base branch: ${base_branch}
+Head branch: ${head_branch}
+
+Commands:
+
+\`\`\`bash
+git push -u origin HEAD
+gh pr create --base "${base_branch}" --head "${head_branch}" --title "${title}" --body-file "${body_file}"
+\`\`\`
+ENDHANDOFF
+
+    cat <<ENDOUT
+PR_HANDOFF_OK
+TASK_ID=${TASK_ID}
+AUTONOMOUS_PR=false
+HANDOFF_FILE=${handoff}
+BODY_FILE=${body_file}
+NEXT_STEP=Create the PR manually, then run: \$ENGINE pass-pr --task-id ${TASK_ID} --pr-url <url>
+ENDOUT
+    return 0
+  fi
+
+  if [[ "$autonomous_pr" != "true" ]]; then
+    echo "Error: autonomous_pr must be true or false, got '${autonomous_pr}'" >&2
+    exit 1
+  fi
+
+  if ! command -v gh >/dev/null 2>&1; then
+    echo "Error: gh CLI is required when autonomous_pr=true" >&2
+    exit 1
+  fi
+
+  local pr_url
+  if ! git push -u origin HEAD >&2; then
+    echo "Error: git push -u origin HEAD failed" >&2
+    exit 1
+  fi
+
+  if ! pr_url="$(gh pr create --base "$base_branch" --head "$head_branch" --title "$title" --body-file "$body_file")"; then
+    echo "Error: gh pr create failed" >&2
+    exit 1
+  fi
+
+  cat <<ENDOUT
+CREATE_PR_OK
+TASK_ID=${TASK_ID}
+AUTONOMOUS_PR=true
+PR_URL=${pr_url}
+NEXT_STEP=Run: \$ENGINE pass-pr --task-id ${TASK_ID} --pr-url ${pr_url}
+ENDOUT
+}
+
+# ============================================================================
 # Command: pass-pr
 # ============================================================================
 
@@ -1582,7 +1793,8 @@ cmd_assemble_context() {
     exit 1
   fi
 
-  # Extract checkpoint section from spec (between ### Checkpoint NN: and next ### or ---)
+  # Extract checkpoint section from spec, ignoring markdown-looking headings in
+  # fenced code blocks.
   local cp_num_int
   cp_num_int=$(echo "$CHECKPOINT" | sed 's/^0*//')
   local checkpoint_section
@@ -1591,14 +1803,33 @@ import re, sys
 spec_path = sys.argv[1]
 cp_num = sys.argv[2]
 with open(spec_path) as f:
-    content = f.read()
-pattern = r'(### Checkpoint 0*' + re.escape(cp_num) + r':.*?)(?=### Checkpoint [0-9]|## [^#]|---|\Z)'
-match = re.search(pattern, content, re.DOTALL)
-if match:
-    print(match.group(1).strip())
-else:
+    lines = f.read().splitlines()
+fence_re = re.compile(r'^\s*' + chr(96) + r'{3,}')
+
+start = None
+start_re = re.compile(r'^### Checkpoint 0*' + re.escape(cp_num) + r':')
+for idx, line in enumerate(lines):
+    if start_re.match(line):
+        start = idx
+        break
+
+if start is None:
     print('ERROR: Could not extract checkpoint section')
     sys.exit(1)
+
+end = len(lines)
+in_fence = False
+for idx in range(start + 1, len(lines)):
+    line = lines[idx]
+    if fence_re.match(line):
+        in_fence = not in_fence
+    if in_fence:
+        continue
+    if re.match(r'^### Checkpoint [0-9]', line) or re.match(r'^## [^#]', line) or re.match(r'^---\s*$', line):
+        end = idx
+        break
+
+print('\n'.join(lines[start:end]).strip())
 " "$spec" "$cp_num_int")
 
   if [[ $? -ne 0 || "$checkpoint_section" == ERROR:* ]]; then
@@ -1607,17 +1838,62 @@ else:
     exit 1
   fi
 
-  # Detect checkpoint type from section
-  local checkpoint_type="unknown"
-  if echo "$checkpoint_section" | grep -qi "Type:.*frontend"; then
-    checkpoint_type="frontend"
-  elif echo "$checkpoint_section" | grep -qi "Type:.*backend"; then
-    checkpoint_type="backend"
-  elif echo "$checkpoint_section" | grep -qi "Type:.*fullstack"; then
-    checkpoint_type="fullstack"
-  elif echo "$checkpoint_section" | grep -qi "Type:.*infra"; then
-    checkpoint_type="infrastructure"
-  fi
+  # Detect checkpoint type from the real checkpoint section only. Accept the
+  # canonical '- Type:' form and one bold-decorated '- **Type**:' compatibility
+  # form, but fail loudly instead of emitting checkpoint_type: unknown.
+  local checkpoint_type
+  checkpoint_type=$(python3 -c "
+import re, sys
+spec_path, cp_num, checkpoint = sys.argv[1:4]
+with open(spec_path) as f:
+    lines = f.read().splitlines()
+fence_re = re.compile(r'^\s*' + chr(96) + r'{3,}')
+
+start = None
+start_re = re.compile(r'^### Checkpoint 0*' + re.escape(cp_num) + r':')
+for idx, line in enumerate(lines):
+    if start_re.match(line):
+        start = idx
+        break
+
+end = len(lines)
+in_fence = False
+for idx in range((start or 0) + 1, len(lines)):
+    line = lines[idx]
+    if fence_re.match(line):
+        in_fence = not in_fence
+    if in_fence:
+        continue
+    if re.match(r'^### Checkpoint [0-9]', line) or re.match(r'^## [^#]', line) or re.match(r'^---\s*$', line):
+        end = idx
+        break
+
+type_line = None
+invalid_line = None
+valid = {'frontend', 'backend', 'fullstack', 'infrastructure'}
+in_fence = False
+for idx in range(start or 0, end):
+    line = lines[idx]
+    if fence_re.match(line):
+        in_fence = not in_fence
+        continue
+    if in_fence:
+        continue
+    match = re.match(r'^\s*-\s*(?:\*\*)?Type(?:\*\*)?\s*:\s*([A-Za-z_-]+)\b', line)
+    if match:
+        value = match.group(1).lower()
+        if value in valid:
+            type_line = value
+            break
+        invalid_line = idx + 1
+
+if type_line:
+    print(type_line)
+else:
+    line_no = invalid_line or ((start or 0) + 1)
+    print(f'Error: checkpoint {checkpoint} missing or invalid Type field at {spec_path}:{line_no}', file=sys.stderr)
+    sys.exit(1)
+" "$spec" "$cp_num_int" "$CHECKPOINT") || exit 1
 
   # Build Prior Progress from completed checkpoint status.md files
   local prior_progress=""
@@ -2043,6 +2319,19 @@ print(count)
         reason="Cannot skip full-verify from phase: ${phase}. Review-loop must complete first."
       fi
       ;;
+    create-pr)
+      if [[ "$phase" == "full-verify" ]]; then
+        local fv_status
+        fv_status=$(json_get "$gs" "full_verify_status")
+        if [[ "$fv_status" == "COMPLETE" || "$fv_status" == "SKIPPED" ]]; then
+          valid="true"
+        else
+          reason="Cannot create PR: full_verify_status is '${fv_status}' — full-verify must complete first."
+        fi
+      else
+        reason="Cannot create PR from phase: ${phase}. Full-verify must complete first."
+      fi
+      ;;
     pass-pr)
       if [[ "$phase" == "full-verify" ]]; then
         local fv_status
@@ -2109,11 +2398,13 @@ case "$COMMAND" in
   begin-full-verify)    cmd_begin_full_verify ;;
   pass-full-verify)     cmd_pass_full_verify ;;
   skip-full-verify)     cmd_skip_full_verify ;;
+  create-pr)            cmd_create_pr ;;
   pass-pr)              cmd_pass_pr ;;
   complete)             cmd_complete ;;
   abort)                cmd_abort ;;
   assemble-context)     cmd_assemble_context ;;
   assemble-retro-input) cmd_assemble_retro_input ;;
+  scope-check)          cmd_scope_check ;;
   validate-transition)  cmd_validate_transition ;;
   --help)               usage ;;
   *)

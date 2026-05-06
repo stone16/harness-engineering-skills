@@ -30,6 +30,12 @@ Sections: Goal, Success Criteria, Checkpoints, Technical Approach, Out of Scope,
 ```
 Each checkpoint MUST use `### Checkpoint NN: <title>` heading (zero-padded number). The engine uses this exact pattern for `assemble-context` extraction.
 
+The canonical Type metadata shape is `- Type: <value>`. The engine accepts one
+compatibility form, `- **Type**: <value>`, to prevent legacy specs from
+silently degrading to `checkpoint_type: unknown`; the Spec Evaluator still
+warns on that decorated form and recommends normalizing to the canonical line.
+Missing or invalid Type metadata is an engine error, not an `unknown` fallback.
+
 ### Evidence Requirements (enforced by Spec Evaluator Phase 5)
 
 Whenever the spec asserts that a decision, threshold, design, or value was
@@ -185,6 +191,60 @@ Sections:
 - **Concerns**: numbered, each with severity (critical|warning|info), details, suggested_fix. Critical = blocks execution. Warning = should fix. Info = suggestion.
 - **Effort Estimate**: S/M/L per checkpoint
 - **Failure Modes**: one realistic production failure scenario per checkpoint
+
+### Spec Evaluator pre-execution warnings
+
+The Spec Evaluator emits warning-level concerns for these mechanical
+pre-execution hazards before a Generator starts:
+
+- `cross-CP artifact ownership conflict` flags the same artifact path, table,
+  index, public symbol, or other named ownership surface appearing in two or
+  more checkpoints without an explicit lifecycle split. Source: issue #24.
+- `literal localhost port without override` flags literal
+  `localhost:<well-known-port>` values (`5432`, `5433`, `6379`, `8000`,
+  `8080`, `9092`) that lack an environment-variable override surface or
+  testcontainer-equivalent path. Source: issue #21.
+- `executable SDK/API citation` flags spec lines that name a specific SDK
+  class, function, shell flag, import path, or provider API shape the Generator
+  will execute without a verified installed-version citation or an explicit
+  `approximate / canonical resolution by Generator` annotation. Source: issue
+  #16.
+
+---
+
+## spec-review-dual-track
+
+Dual-track spec review is the reusable protocol for high-risk or
+protocol-shaping specs that need two independent reviewers before execution.
+For each round, the Orchestrator uses the `parallel dispatch contract`: dispatch
+`harness-spec-evaluator` as the Claude subagent reviewer and a Codex peer
+reviewer in parallel against the same spec version and context. Source: issue #18.
+
+The Planner writes one `single planner-response` covering the union of
+concerns from both reviewers. Each accepted concern maps to a spec edit; each
+rejected warning concern carries the normal Verification block; critical
+concerns are not rejected autonomously.
+
+The round reaches `both-approve consensus` only when both reviewers approve the
+same spec version, or when the remaining non-approve feedback is explicitly
+classified as non-blocking by both reviewers. If either reviewer returns
+`revise`, run another round after the Planner response updates the spec.
+
+---
+
+## pre-classified-review-pattern
+
+For scaffold checkpoints whose expected diff knowingly exceeds the L-tier 3x
+magnitude threshold, the spec may pre-classify the resulting evaluator REVIEW
+as `auto_resolvable=true` only when the checkpoint includes the
+`deterministic commands requirement`: exact shell commands, expected outputs or
+artifact paths, and the reason the large diff is mechanical rather than a
+scope expansion. Source: issue #22.
+
+Pre-classification does not skip evaluation. The Evaluator still returns
+REVIEW when the magnitude threshold is exceeded, but the Orchestrator may treat
+that REVIEW as an expected, auto-resolvable protocol gate if the deterministic
+commands prove the scaffold shape and no unrelated files are present.
 
 ---
 
@@ -511,10 +571,64 @@ Sections:
 - `begin-full-verify` — requires phase `review-loop`, sets phase to `full-verify`, creates `full-verify/` directory
 - `pass-full-verify` — requires `full-verify/iter-N/verification-report.md` with verdict PASS or PASS_WITH_WARNINGS, rejects stale artifacts, records final SHA
 - `skip-full-verify` — only allowed when `skip_full_verify=true` in config, sets phase to `full-verify`
+- `create-pr --base <branch> --title <title> --body <body>` — requires `full_verify_status` state `COMPLETE` or `SKIPPED`; either creates a PR and prints `CREATE_PR_OK` + `PR_URL=<url>`, or writes `.harness/<task-id>/pr-handoff.md` and prints `PR_HANDOFF_OK` when `autonomous_pr=false`
 - `pass-pr --pr-url <url>` — records PR URL, sets phase to `pr`
 - `complete` — sets phase to `done`
 
 When `aborted` is `true`, the checkpoint is terminal — skipped by status, validation, and abort auto-detection.
+
+---
+
+## scope-check
+
+`harness-engine.sh scope-check --base-branch <branch>` is the deterministic
+scope-discipline primitive for changed-file discovery. It must run
+`git fetch origin <base>` before computing the merge base, then compare `HEAD`
+against `origin/<base>` rather than trusting a possibly stale local base branch.
+
+Output shape:
+
+```text
+SCOPE_CHECK_OK
+BASE_BRANCH=<branch>
+BASE_REF=origin/<branch>
+MERGE_BASE=<sha>
+IN_SCOPE_FILE_COUNT=<N>
+IN_SCOPE_FILES_BEGIN
+<one changed path per line>
+IN_SCOPE_FILES_END
+```
+
+Use this primitive when a checkpoint or review gate needs a scope file list
+against the upstream base branch.
+
+---
+
+## review-loop-fullverify-coupling
+
+Review-loop and full-verify are coupled gates. When a harness task runs both,
+the review-loop report must preserve the verification contract that full-verify
+will later rely on.
+
+Rules:
+
+- `discovery-gate mirror`: the review-loop verification step must run every
+  gate named by the current task's `full-verify/discovery.md` for the touched
+  surface. If the task declares no matching touched-surface gate, record that
+  explicitly in the review-loop report. Source: issue #17.
+- `post-fix integration audit`: when `review_loop_status: COMPLETE` and the
+  review loop modified files, `verification-report.md` must include a
+  `Review-loop Post-fix Integration Audit` section. That section enumerates
+  each accepted finding, the file changes made for it, and the per-finding
+  re-proof commands that show the fixed code still integrates with the task
+  verification path. Source: issue #23.
+- `async lifecycle heuristic`: when the diff includes modules constructing
+  `asyncio.Queue`, `asyncio.Lock`, `asyncio.Event`, or background tasks at
+  import or module scope, the review-loop round must include focused project
+  lifespan/startup tests before it can claim convergence. Source: issue #26.
+
+The downstream `review-loop` skill must surface these same rule keywords so the
+operator instructions and harness protocol stay mirrored.
 
 ---
 
@@ -565,8 +679,22 @@ values are filing errors to record in Filed Issues, not defaults to `host`.
 
 Extraction: parse the markdown body field with
 `^- \*\*target_repo\*\*:[[:space:]]*(.*)$`, trim surrounding whitespace,
+strip one optional matching pair of surrounding ASCII quotes or backticks,
+strip one trailing `# comment` when the `#` is preceded by whitespace,
 lowercase the value, and accept only `harness`, `host`, or `both`. Any other
-value, including an empty match, is an invalid `target_repo`.
+value, including an empty match, is an invalid `target_repo`. This decorated
+form tolerance is compatibility only; the canonical body field remains the
+bare enum value.
+
+Each `scripts/file-retro-issue.sh` invocation writes exactly one stdout summary
+line for operator observability:
+
+```text
+proposal=N target=<harness|host|both|invalid|missing> url=<url|none> labels=<ok|partial|skipped>
+```
+
+The Filed Issues ledger remains the canonical durable record; stdout is a live
+run summary and may be captured by orchestrators.
 
 For `target_repo: both`, file one issue in `HARNESS_TARGET_REPO` and one in
 the host repo, then update both bodies with `Cross-filed: <other_url>`. The

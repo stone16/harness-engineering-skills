@@ -140,3 +140,21 @@ The host agent follows this for each round:
   - All resolved? → Phase 3 (Final Report)
   - Unresolved items? → Build re-review prompt → Next round
   - Round > MAX_ROUNDS? → Phase 3 with `max_rounds` status
+
+---
+
+## 6. Harness Full-Verify Coupling
+
+When `review-loop` is running inside a harness task that also has a
+full-verify gate, the host agent keeps the review-loop report aligned with the
+harness protocol:
+
+- `discovery-gate mirror`: run every gate named by the current task's
+  `full-verify/discovery.md` for the touched surface, or record that no
+  touched-surface gate applies.
+- `post-fix integration audit`: if `review_loop_status: COMPLETE` and the
+  loop modified files, include `Review-loop Post-fix Integration Audit` in
+  `verification-report.md` with per-finding re-proof commands.
+- `async lifecycle heuristic`: if the diff constructs `asyncio.Queue`,
+  `asyncio.Lock`, `asyncio.Event`, or background tasks at import or module
+  scope, include focused project lifespan/startup tests in the round evidence.
