@@ -212,6 +212,43 @@ pre-execution hazards before a Generator starts:
 
 ---
 
+## spec-review-dual-track
+
+Dual-track spec review is the reusable protocol for high-risk or
+protocol-shaping specs that need two independent reviewers before execution.
+For each round, the Orchestrator uses the `parallel dispatch contract`: dispatch
+`harness-spec-evaluator` as the Claude subagent reviewer and a Codex peer
+reviewer in parallel against the same spec version and context. Source: issue
+#18.
+
+The Planner writes one `single planner-response` covering the union of
+concerns from both reviewers. Each accepted concern maps to a spec edit; each
+rejected warning concern carries the normal Verification block; critical
+concerns are not rejected autonomously.
+
+The round reaches `both-approve consensus` only when both reviewers approve the
+same spec version, or when the remaining non-approve feedback is explicitly
+classified as non-blocking by both reviewers. If either reviewer returns
+`revise`, run another round after the Planner response updates the spec.
+
+---
+
+## pre-classified-review-pattern
+
+For scaffold checkpoints whose expected diff knowingly exceeds the L-tier 3x
+magnitude threshold, the spec may pre-classify the resulting evaluator REVIEW
+as `auto_resolvable=true` only when the checkpoint includes the
+`deterministic commands requirement`: exact shell commands, expected outputs or
+artifact paths, and the reason the large diff is mechanical rather than a
+scope expansion. Source: issue #22.
+
+Pre-classification does not skip evaluation. The Evaluator still returns
+REVIEW when the magnitude threshold is exceeded, but the Orchestrator may treat
+that REVIEW as an expected, auto-resolvable protocol gate if the deterministic
+commands prove the scaffold shape and no unrelated files are present.
+
+---
+
 ## round-N-planner-response.md (spec-review/)
 
 ```yaml
