@@ -57,4 +57,19 @@ if (cd "$work" && "$engine" scope-check --base-branch main) > "$tmpdir/fetch-fai
 fi
 grep -q "Error: failed to fetch origin/main" "$tmpdir/fetch-fail.err"
 
+git -C "$work" remote set-url origin "$origin"
+git -C "$work" checkout --orphan unrelated >/dev/null 2>&1
+git -C "$work" rm -rf . >/dev/null 2>&1 || true
+printf 'unrelated\n' > "$work/unrelated.txt"
+git -C "$work" add unrelated.txt
+git -C "$work" commit -m "unrelated history" >/dev/null
+
+if (cd "$work" && "$engine" scope-check --base-branch main) > "$tmpdir/merge-base-fail.out" 2> "$tmpdir/merge-base-fail.err"; then
+  echo "scope-check succeeded despite unrelated base and head histories" >&2
+  cat "$tmpdir/merge-base-fail.out" >&2
+  cat "$tmpdir/merge-base-fail.err" >&2
+  exit 1
+fi
+grep -q "Error: failed to compute merge-base between origin/main and HEAD" "$tmpdir/merge-base-fail.err"
+
 echo "scope-check base fetch test passed"
