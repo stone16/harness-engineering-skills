@@ -316,7 +316,10 @@ cmd_scope_check() {
     exit 1
   fi
 
-  git fetch --quiet origin "$base_branch"
+  if ! git fetch --quiet origin "$base_branch"; then
+    echo "Error: failed to fetch origin/${base_branch}" >&2
+    exit 1
+  fi
 
   local base_ref="origin/${base_branch}"
   if ! git rev-parse --verify --quiet "$base_ref" >/dev/null; then
@@ -325,7 +328,10 @@ cmd_scope_check() {
   fi
 
   local merge_base
-  merge_base="$(git merge-base "$base_ref" HEAD)"
+  if ! merge_base="$(git merge-base "$base_ref" HEAD)"; then
+    echo "Error: failed to compute merge-base between ${base_ref} and HEAD" >&2
+    exit 1
+  fi
 
   local files
   files="$(git diff --name-only "${merge_base}..HEAD")"
@@ -1529,6 +1535,11 @@ ENDOUT
   fi
 
   local pr_url
+  if ! git push -u origin HEAD >&2; then
+    echo "Error: git push -u origin HEAD failed" >&2
+    exit 1
+  fi
+
   if ! pr_url="$(gh pr create --base "$base_branch" --head "$head_branch" --title "$title" --body-file "$body_file")"; then
     echo "Error: gh pr create failed" >&2
     exit 1

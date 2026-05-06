@@ -8,6 +8,8 @@ trap 'rm -rf "$tmpdir"' EXIT INT TERM
 
 setup_repo() {
   local workdir="$1"
+  local origin="${workdir}-origin.git"
+  git init -q --bare "$origin"
   mkdir -p "$workdir"
   (
     cd "$workdir"
@@ -17,6 +19,8 @@ setup_repo() {
     echo root > README.md
     git add README.md
     git commit -q -m "initial"
+    git remote add origin "$origin"
+    git push -q -u origin main
     git checkout -q -b feature/autonomous-pr
     mkdir -p .harness/autonomous-pr-test
     cat > .harness/autonomous-pr-test/git-state.json <<'JSON'
@@ -92,6 +96,7 @@ install_gh_stub "$true_bin" "$true_log"
   assert_contains create-pr.out "CREATE_PR_OK"
   assert_contains create-pr.out "AUTONOMOUS_PR=true"
   assert_contains create-pr.out "PR_URL=https://github.com/example/repo/pull/123"
+  git ls-remote --exit-code --heads origin feature/autonomous-pr >/dev/null
 )
 if [[ "$(grep -c '^pr create' "$true_log")" -ne 1 ]]; then
   echo "expected autonomous_pr=true to call gh pr create exactly once" >&2

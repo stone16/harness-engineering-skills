@@ -48,4 +48,13 @@ if printf '%s\n' "$output" | grep -q '^already-merged.txt$'; then
   exit 1
 fi
 
+git -C "$work" remote set-url origin "$tmpdir/missing-origin.git"
+if (cd "$work" && "$engine" scope-check --base-branch main) > "$tmpdir/fetch-fail.out" 2> "$tmpdir/fetch-fail.err"; then
+  echo "scope-check succeeded despite failed fetch" >&2
+  cat "$tmpdir/fetch-fail.out" >&2
+  cat "$tmpdir/fetch-fail.err" >&2
+  exit 1
+fi
+grep -q "Error: failed to fetch origin/main" "$tmpdir/fetch-fail.err"
+
 echo "scope-check base fetch test passed"
