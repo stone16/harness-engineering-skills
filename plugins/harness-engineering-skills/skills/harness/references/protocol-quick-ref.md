@@ -549,6 +549,34 @@ against the upstream base branch.
 
 ---
 
+## review-loop-fullverify-coupling
+
+Review-loop and full-verify are coupled gates. When a harness task runs both,
+the review-loop report must preserve the verification contract that full-verify
+will later rely on.
+
+Rules:
+
+- `discovery-gate mirror`: the review-loop verification step must run every
+  gate named by the current task's `full-verify/discovery.md` for the touched
+  surface. If the task declares no matching touched-surface gate, record that
+  explicitly in the review-loop report. Source: issue #17.
+- `post-fix integration audit`: when `review_loop_status: COMPLETE` and the
+  review loop modified files, `verification-report.md` must include a
+  `Review-loop Post-fix Integration Audit` section. That section enumerates
+  each accepted finding, the file changes made for it, and the per-finding
+  re-proof commands that show the fixed code still integrates with the task
+  verification path. Source: issue #23.
+- `async lifecycle heuristic`: when the diff includes modules constructing
+  `asyncio.Queue`, `asyncio.Lock`, `asyncio.Event`, or background tasks at
+  import or module scope, the review-loop round must include focused project
+  lifespan/startup tests before it can claim convergence. Source: issue #26.
+
+The downstream `review-loop` skill must surface these same rule keywords so the
+operator instructions and harness protocol stay mirrored.
+
+---
+
 ## retro-input.md (Orchestrator assembles)
 
 ```yaml
