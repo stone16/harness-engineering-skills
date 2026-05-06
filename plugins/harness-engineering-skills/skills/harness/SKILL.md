@@ -1,6 +1,6 @@
 ---
 name: harness
-version: 0.15.0
+version: 0.16.0
 description: |
   Cybernetics-based multi-agent orchestration for complex tasks. Coordinates a
   Planner → Generator → Evaluator → Retro pipeline with clean-context sub-agents,
@@ -70,10 +70,11 @@ Delegate ALL file-system and git bookkeeping to the engine.
 | `max_verify_rounds` | `3` | 1–5, max iterations for full-verify fix loop |
 | `coverage_threshold` | `85` | Hard minimum — FAIL if below this % |
 | `skip_full_verify` | `false` | `true` → skip full-verify phase |
+| `autonomous_pr` | `true` | `false` → write `.harness/<task-id>/pr-handoff.md` instead of running `gh pr create` |
 
 **Precedence**: defaults < `.harness/config.json` < invocation args
 
-Read config: `$ENGINE read-config [--max-spec-rounds N] [--max-eval-rounds N] ...`
+Read config: `$ENGINE read-config [--max-spec-rounds N] [--max-eval-rounds N] [--autonomous-pr true|false] ...`
 
 ## Architecture
 
