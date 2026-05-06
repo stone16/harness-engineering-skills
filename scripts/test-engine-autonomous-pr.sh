@@ -91,6 +91,15 @@ true_log="$tmpdir/true-gh.log"
 install_gh_stub "$true_bin" "$true_log"
 (
   cd "$true_repo"
+  if PATH="$true_bin:$PATH" GH_STUB_LOG="$true_log" \
+    "$engine" create-pr --task-id autonomous-pr-test --base > missing-base.out 2> missing-base.err; then
+    echo "create-pr succeeded despite missing --base value" >&2
+    cat missing-base.out >&2
+    cat missing-base.err >&2
+    exit 1
+  fi
+  assert_contains missing-base.err "Error: --base requires a value"
+
   PATH="$true_bin:$PATH" GH_STUB_LOG="$true_log" \
     "$engine" create-pr --task-id autonomous-pr-test --base main --title "Autonomous PR" --body "Default autonomous body" > create-pr.out
   assert_contains create-pr.out "CREATE_PR_OK"

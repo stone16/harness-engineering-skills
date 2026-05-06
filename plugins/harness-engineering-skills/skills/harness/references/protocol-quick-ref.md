@@ -218,8 +218,7 @@ Dual-track spec review is the reusable protocol for high-risk or
 protocol-shaping specs that need two independent reviewers before execution.
 For each round, the Orchestrator uses the `parallel dispatch contract`: dispatch
 `harness-spec-evaluator` as the Claude subagent reviewer and a Codex peer
-reviewer in parallel against the same spec version and context. Source: issue
-#18.
+reviewer in parallel against the same spec version and context. Source: issue #18.
 
 The Planner writes one `single planner-response` covering the union of
 concerns from both reviewers. Each accepted concern maps to a spec edit; each
@@ -572,7 +571,7 @@ Sections:
 - `begin-full-verify` — requires phase `review-loop`, sets phase to `full-verify`, creates `full-verify/` directory
 - `pass-full-verify` — requires `full-verify/iter-N/verification-report.md` with verdict PASS or PASS_WITH_WARNINGS, rejects stale artifacts, records final SHA
 - `skip-full-verify` — only allowed when `skip_full_verify=true` in config, sets phase to `full-verify`
-- `create-pr --base <branch> --title <title> --body <body>` — requires completed or skipped full-verify; either creates a PR and prints `CREATE_PR_OK` + `PR_URL=<url>`, or writes `.harness/<task-id>/pr-handoff.md` and prints `PR_HANDOFF_OK` when `autonomous_pr=false`
+- `create-pr --base <branch> --title <title> --body <body>` — requires `full_verify_status` state `COMPLETE` or `SKIPPED`; either creates a PR and prints `CREATE_PR_OK` + `PR_URL=<url>`, or writes `.harness/<task-id>/pr-handoff.md` and prints `PR_HANDOFF_OK` when `autonomous_pr=false`
 - `pass-pr --pr-url <url>` — records PR URL, sets phase to `pr`
 - `complete` — sets phase to `done`
 

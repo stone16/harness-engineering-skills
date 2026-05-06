@@ -295,12 +295,22 @@ current_sha() {
   git rev-parse HEAD 2>/dev/null
 }
 
+require_next_arg() {
+  local option="$1"
+  local index="$2"
+  if [[ $((index + 1)) -ge ${#EXTRA_ARGS[@]} ]]; then
+    echo "Error: ${option} requires a value" >&2
+    exit 1
+  fi
+}
+
 cmd_scope_check() {
   local base_branch="main"
   local i=0
   while [[ $i -lt ${#EXTRA_ARGS[@]} ]]; do
     case "${EXTRA_ARGS[$i]}" in
       --base-branch)
+        require_next_arg "--base-branch" "$i"
         base_branch="${EXTRA_ARGS[$((i+1))]}"
         i=$((i+2))
         ;;
@@ -1472,9 +1482,21 @@ cmd_create_pr() {
   local i=0
   while [[ $i -lt ${#EXTRA_ARGS[@]} ]]; do
     case "${EXTRA_ARGS[$i]}" in
-      --base)  base_branch="${EXTRA_ARGS[$((i+1))]}"; i=$((i+2)) ;;
-      --title) title="${EXTRA_ARGS[$((i+1))]}"; i=$((i+2)) ;;
-      --body)  body="${EXTRA_ARGS[$((i+1))]}"; i=$((i+2)) ;;
+      --base)
+        require_next_arg "--base" "$i"
+        base_branch="${EXTRA_ARGS[$((i+1))]}"
+        i=$((i+2))
+        ;;
+      --title)
+        require_next_arg "--title" "$i"
+        title="${EXTRA_ARGS[$((i+1))]}"
+        i=$((i+2))
+        ;;
+      --body)
+        require_next_arg "--body" "$i"
+        body="${EXTRA_ARGS[$((i+1))]}"
+        i=$((i+2))
+        ;;
       *) echo "Error: Unknown create-pr option: ${EXTRA_ARGS[$i]}" >&2; exit 1 ;;
     esac
   done

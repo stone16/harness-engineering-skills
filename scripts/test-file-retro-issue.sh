@@ -43,6 +43,13 @@ if [[ "$1 $2" == "label create" ]]; then
 fi
 if [[ "$1 $2" == "issue create" ]]; then
   [[ "$mode" == "both_create_fail" ]] && exit 1
+  if [[ "$mode" == "create_transient_fail" ]]; then
+    state="${FAKE_RETRY_STATE:?}"
+    count="$(cat "$state" 2>/dev/null || printf '0')"
+    count=$((count + 1))
+    printf '%s' "$count" > "$state"
+    [[ "$count" -eq 1 ]] && exit 1
+  fi
   if [[ " $* " == *" --repo stone16/harness-engineering-skills "* ]]; then
     [[ "$mode" == "harness_create_fail" || "$mode" == "annotation_fail" ]] && exit 1
     printf 'https://github.com/stone16/harness-engineering-skills/issues/10\n'
@@ -95,6 +102,8 @@ run_case "host" "labelFail" "label_fail"
 run_case "harness" "labelFailHarness" "label_fail"
 run_case "both" "labelFailBoth" "label_fail"
 run_case "both" "bothCreateFail" "both_create_fail"
+: > "$retry_state"
+run_case "harness" "createTransientFail" "create_transient_fail"
 run_case "\`harness\`" "decoratedBacktick"
 run_case '"host"' "decoratedDoubleQuote"
 run_case "both # route to both repos" "decoratedComment"
@@ -146,6 +155,7 @@ cat > "$expected" <<'EOF'
 - Proposal labelFailHarness (harness, label not applied): https://github.com/stone16/harness-engineering-skills/issues/10
 - Proposal labelFailBoth (both, labels harness=false host=false): https://github.com/stone16/harness-engineering-skills/issues/10 | https://github.com/host/repo/issues/20
 - Proposal bothCreateFail (both, partial create): no-harness-url | no-host-url
+- Proposal createTransientFail (skipped, harness create failed): Title createTransientFail
 - Proposal decoratedBacktick (harness): https://github.com/stone16/harness-engineering-skills/issues/10
 - Proposal decoratedDoubleQuote (host): https://github.com/host/repo/issues/20
 - Proposal decoratedComment (both): https://github.com/stone16/harness-engineering-skills/issues/10 | https://github.com/host/repo/issues/20
@@ -159,7 +169,7 @@ EOF
 diff -u "$expected" "$filed"
 
 invocations="$(wc -l < "$stdout_log" | tr -d ' ')"
-if [[ "$invocations" != "23" ]]; then
+if [[ "$invocations" != "24" ]]; then
   echo "expected one stdout summary per invocation; got $invocations" >&2
   cat "$stdout_log" >&2
   exit 1
@@ -169,6 +179,12 @@ if grep -Ev '^proposal=[^[:space:]]+ target=(host|harness|both|invalid|missing) 
   exit 1
 fi
 grep -q '^proposal=retryThenOk target=harness url=https://github.com/stone16/harness-engineering-skills/issues/10 labels=ok$' "$stdout_log"
+create_transient_count="$(grep -c '^issue create --repo stone16/harness-engineering-skills --title Title createTransientFail' "$gh_log" || true)"
+if [[ "$create_transient_count" != "1" ]]; then
+  echo "expected issue create to avoid retrying non-idempotent create path; got $create_transient_count calls" >&2
+  cat "$gh_log" >&2
+  exit 1
+fi
 
 : > "$gh_log"
 PATH="$tmpdir:$PATH"

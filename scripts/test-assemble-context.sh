@@ -6,7 +6,7 @@ engine="$repo_root/plugins/harness-engineering-skills/skills/harness/scripts/har
 tmp_tasks=()
 
 cleanup() {
-  for task in "${tmp_tasks[@]:-}"; do
+  for task in "${tmp_tasks[@]}"; do
     rm -rf "$repo_root/.harness/$task"
   done
 }

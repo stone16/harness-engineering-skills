@@ -151,7 +151,18 @@ create_issue() {
   [[ "$target" == "harness" ]] && repo="$HARNESS_TARGET_REPO" || repo="$HOST_TARGET_REPO"
   args=(--repo "$repo" --title "$TITLE" --body-file "$BODY_FILE")
   [[ "$label_ready" == "true" ]] && args+=(--label "harness-retro")
-  _gh_with_retry issue create "${args[@]}"
+  # `gh issue create` is not idempotent: a transient client-side failure after
+  # GitHub accepts the request can create duplicates if blindly retried.
+  gh issue create "${args[@]}"
+}
+
+set_cross_repo_summary() {
+  local harness_url="$1"
+  local host_url="$2"
+  local labels="$3"
+  SUMMARY_TARGET="both"
+  SUMMARY_URL="${harness_url:-${host_url:-none}}"
+  SUMMARY_LABELS="$labels"
 }
 
 file_single_repo_issue() {
@@ -237,21 +248,25 @@ file_cross_repo_issue() {
 
   harness_body="$(mktemp "${TMPDIR:-/tmp}/harness-retro-body.XXXXXX" 2>/dev/null)" || {
     record_filed_issue "- Proposal $PROPOSAL_INDEX (both, cross-link skipped, mktemp failed): $harness_url | $host_url"
+    set_cross_repo_summary "$harness_url" "$host_url" "partial"
     return 0
   }
   TMP_BODIES+=("$harness_body")
   host_body="$(mktemp "${TMPDIR:-/tmp}/harness-retro-body.XXXXXX" 2>/dev/null)" || {
     rm -f "$harness_body"
     record_filed_issue "- Proposal $PROPOSAL_INDEX (both, cross-link skipped, mktemp failed): $harness_url | $host_url"
+    set_cross_repo_summary "$harness_url" "$host_url" "partial"
     return 0
   }
   TMP_BODIES+=("$host_body")
   cp "$BODY_FILE" "$harness_body" || {
     record_filed_issue "- Proposal $PROPOSAL_INDEX (both, cross-link skipped, body copy failed): $harness_url | $host_url"
+    set_cross_repo_summary "$harness_url" "$host_url" "partial"
     return 0
   }
   cp "$BODY_FILE" "$host_body" || {
     record_filed_issue "- Proposal $PROPOSAL_INDEX (both, cross-link skipped, body copy failed): $harness_url | $host_url"
+    set_cross_repo_summary "$harness_url" "$host_url" "partial"
     return 0
   }
   printf '\nCross-filed: %s\n' "$host_url" >> "$harness_body"

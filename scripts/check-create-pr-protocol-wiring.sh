@@ -59,4 +59,37 @@ for token in "${quick_ref_tokens[@]}"; do
   fi
 done
 
+pr_step="$(
+  awk '
+    /^7\. PR creation/ { in_section=1; print; next }
+    in_section && /^8\. / { exit }
+    in_section { print }
+  ' "$execution_protocol"
+)"
+
+if [[ -z "$pr_step" ]]; then
+  echo "execution protocol is missing the PR creation step section" >&2
+  exit 1
+fi
+
+primary_path="$(
+  awk '
+    /PR_HANDOFF_OK/ { exit }
+    { print }
+  ' <<<"$pr_step"
+)"
+
+legacy_primary_tokens=(
+  "ship"
+  "superpowers:finishing-a-development-branch"
+  "gh pr create"
+)
+
+for token in "${legacy_primary_tokens[@]}"; do
+  if grep -Fq "$token" <<<"$primary_path"; then
+    echo "execution protocol routes primary PR creation through legacy path before PR_HANDOFF_OK: $token" >&2
+    exit 1
+  fi
+done
+
 echo "create-pr protocol wiring check passed"

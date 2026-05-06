@@ -36,6 +36,14 @@ git -C "$work" push origin main >/dev/null 2>&1
 git -C "$work" checkout -b feature "$merged_sha" >/dev/null 2>&1
 git -C "$work" update-ref refs/heads/main "$root_sha"
 
+if (cd "$work" && "$engine" scope-check --base-branch) > "$tmpdir/missing-arg.out" 2> "$tmpdir/missing-arg.err"; then
+  echo "scope-check succeeded despite missing --base-branch value" >&2
+  cat "$tmpdir/missing-arg.out" >&2
+  cat "$tmpdir/missing-arg.err" >&2
+  exit 1
+fi
+grep -q "Error: --base-branch requires a value" "$tmpdir/missing-arg.err"
+
 output="$(cd "$work" && "$engine" scope-check --base-branch main)"
 
 printf '%s\n' "$output" | grep -q '^SCOPE_CHECK_OK$'

@@ -240,7 +240,7 @@ just protocol metadata for the Evaluator.
   was prose rather than halt, because Rule Conflict Notes are descriptive,
   not blocking.
 - **Drafted issue body**:
-  ```
+  ```text
   Title: Spec Evaluator should detect commit-count vs TDD-sequence contradictions
 
   retro-issue-batch-v1's spec v3 Success Criterion #2 said "Seven commits

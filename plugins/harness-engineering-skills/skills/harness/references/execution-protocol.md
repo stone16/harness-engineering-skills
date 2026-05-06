@@ -25,6 +25,14 @@
 4. **Task discovery with multiple matches** — user must choose which task
 5. **Degraded mode confirmation** — continuing in same session as planning
 6. **Full-verify failure after `max_verify_rounds` exhausted** — all checks still failing
+7. **`PR_HANDOFF_OK` manual PR path** — `$ENGINE create-pr` could not create the
+   PR because `autonomous_pr=false`; user/operator must create the PR from
+   `.harness/<task-id>/pr-handoff.md`, then provide the real PR URL for
+   `$ENGINE pass-pr --pr-url <url>`
+
+`PR_HANDOFF_OK` is the only PR-creation human-input path. Do not bypass
+`$ENGINE create-pr` by routing normal execution through `ship`,
+`superpowers:finishing-a-development-branch`, or direct `gh pr create`.
 
 **Everything else is autonomous.** Phase transitions, skill invocations, sub-agent spawning, review-loop execution — all happen automatically. The engine's phase gates enforce correctness.
 
