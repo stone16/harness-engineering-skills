@@ -604,6 +604,33 @@ against the upstream base branch.
 
 ---
 
+## live-platform-verification
+
+When a checkpoint touches deployment configuration — `fly.toml`, `vercel.json`,
+`vercel.ts`, `.github/workflows/deploy.yml`, Alembic release-command wiring,
+secret manifests, OAuth callback URLs, or any external-platform CLI version
+pin — the Generator MUST execute the deployment-tier verification command set
+against the live platform before marking the checkpoint complete. Local-only
+verification is necessary but not sufficient.
+
+Required evidence in `output-summary.md` for any qualifying checkpoint:
+
+- The triggered deploy run id (preview or production) and a link to its logs.
+- `curl` evidence against the live `/healthz` and `/readyz` (or framework
+  equivalent), captured against the deployed instance, not a local stand-in.
+- `curl` evidence against the live public site URL.
+- For each newly-required production env var, evidence that the code path
+  reading it under the production env flag (for example `NEXUS_ENV=production`)
+  was exercised against the deployed instance, not just a local `pytest`.
+
+The Evaluator MUST reject "local pytest green" as evidence for a deployment
+checkpoint when the deploy-run / live-endpoint evidence is missing. Iteration
+cost without this rule is observed: cg-personal-launch CP07 required 7
+iterations almost entirely on facts only the live platform knows. Source:
+issue #30.
+
+---
+
 ## review-loop-fullverify-coupling
 
 Review-loop and full-verify are coupled gates. When a harness task runs both,
@@ -626,6 +653,16 @@ Rules:
   `asyncio.Queue`, `asyncio.Lock`, `asyncio.Event`, or background tasks at
   import or module scope, the review-loop round must include focused project
   lifespan/startup tests before it can claim convergence. Source: issue #26.
+- `post-PASS runtime re-verification`: if a review-loop session runs after an
+  E2E PASS verdict and any accepted finding modifies runtime code — paths
+  under `app/`, `server/`, deploy workflow files, framework config, or
+  migrations — the harness must run a delta E2E iteration against the new SHA
+  before the task is considered complete. The delta iteration re-verifies the
+  deploy run for the new SHA, re-runs live `/healthz` / `/readyz` and any
+  task-specific live smoke tests, and re-walks only the cross-checkpoint
+  data-flow boundaries touched by the review-loop diff. Docs-only / test-only
+  / comment-only post-baseline commits are validated through full-verify's
+  normal path and do not trigger re-E2E. Source: issue #31.
 
 The downstream `review-loop` skill must surface these same rule keywords so the
 operator instructions and harness protocol stay mirrored.
