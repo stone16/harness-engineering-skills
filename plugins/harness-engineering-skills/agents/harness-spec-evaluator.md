@@ -94,6 +94,9 @@ For each checkpoint evaluate:
      `parallel_group` value is not a single uppercase letter A-Z. Absence of
      `parallel_group` is the canonical serial form and emits no warning.
      Emit `severity: warning` with `suggested_fix: extend Files of interest to include any prose-mentioned paths, split the cohort along the Type boundary, or normalize the parallel_group value to a single uppercase letter`.
+     Mirror tokens for the cohort engine contract are `BEGIN_COHORT_OK`,
+     `PASS_COHORT_OK`, and `commit_lock_timeout_seconds`; keep these aligned
+     with the protocol quick reference.
 5. **Files of interest** — are the affected files listed? Are any missing?
 
 ### Phase 3: Cybernetic Completeness

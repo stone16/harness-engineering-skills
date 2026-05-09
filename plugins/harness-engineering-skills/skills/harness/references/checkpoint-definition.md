@@ -165,6 +165,7 @@ Every checkpoint MUST include at least one testability criterion. Strategy diffe
 - `Depends on` declares data dependencies (e.g., "CP03 uses the hook created in CP01") — used by E2E agent for data-flow tracing.
 - The engine rejects cohorts whose members declare `Depends on` edges among themselves.
 - If two checkpoints are completely independent, they may share a `parallel_group`; otherwise numbering still increments and absent `parallel_group` fields preserve serial execution.
+- Mirror tokens for the cohort engine contract: `BEGIN_COHORT_OK`, `PASS_COHORT_OK`, and `commit_lock_timeout_seconds`.
 
 ---
 

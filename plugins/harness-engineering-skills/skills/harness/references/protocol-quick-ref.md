@@ -597,6 +597,9 @@ When `aborted` is `true`, the checkpoint is terminal — skipped by status, vali
 | `BEGIN_COHORT_OK` | `begin-cohort` accepted a cohort, recorded its members, and passed Tier 1 cohort safety checks. |
 | `PASS_COHORT_OK` | `pass-cohort` verified all cohort members reached a terminal allowed status and recorded the cohort as passed. |
 
+Parallel cohort mirror key: `commit_lock_timeout_seconds` configures the
+per-task commit lock used by cohort-safe engine paths.
+
 ---
 
 ## scope-check
