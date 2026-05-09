@@ -160,6 +160,7 @@ DEFAULT_MAX_VERIFY_ROUNDS=3
 DEFAULT_COVERAGE_THRESHOLD=85
 DEFAULT_SKIP_FULL_VERIFY="false"
 DEFAULT_AUTONOMOUS_PR="true"
+DEFAULT_COMMIT_LOCK_TIMEOUT_SECONDS=120
 
 # Global options
 TASK_ID=""
@@ -331,6 +332,69 @@ parse_group_arg() {
   printf '%s\n' "$group"
 }
 
+commit_lock_timeout_seconds() {
+  local timeout="$DEFAULT_COMMIT_LOCK_TIMEOUT_SECONDS"
+  local config_file=".harness/config.json"
+  if [[ -f "$config_file" ]]; then
+    local val
+    val=$(json_get "$config_file" "commit_lock_timeout_seconds")
+    [[ -n "$val" ]] && timeout="$val"
+  fi
+  printf '%s\n' "$timeout"
+}
+
+# ============================================================================
+# Helper: acquire_commit_lock
+# ============================================================================
+
+acquire_commit_lock() {
+  local task_id="$1"
+  shift
+
+  if [[ -z "$task_id" ]]; then
+    echo "Error: task_id is required for acquire_commit_lock" >&2
+    return 1
+  fi
+  if [[ $# -eq 0 ]]; then
+    echo "Error: acquire_commit_lock requires a callback command" >&2
+    return 1
+  fi
+
+  local timeout lock_dir lock_path
+  timeout="$(commit_lock_timeout_seconds)"
+  lock_dir=".harness/${task_id}"
+  lock_path="${lock_dir}/.commit.lock"
+  mkdir -p "$lock_dir"
+  : > "$lock_path"
+
+  if command -v flock >/dev/null 2>&1; then
+    (
+      flock -x -w "$timeout" 9 || return 1
+      "$@"
+    ) 9>"$lock_path"
+    return $?
+  fi
+
+  echo "using mkdir fallback commit lock for ${lock_path}" >&2
+  local fallback_dir="${lock_path}.dir"
+  local start now elapsed
+  start=$(date +%s)
+  while ! mkdir "$fallback_dir" 2>/dev/null; do
+    now=$(date +%s)
+    elapsed=$((now - start))
+    if [[ "$elapsed" -ge "$timeout" ]]; then
+      echo "Error: timed out acquiring commit lock at ${lock_path} after ${timeout}s" >&2
+      return 1
+    fi
+    sleep 1
+  done
+
+  "$@"
+  local status=$?
+  rmdir "$fallback_dir" 2>/dev/null || true
+  return "$status"
+}
+
 cmd_scope_check() {
   local base_branch="main"
   local i=0
@@ -434,6 +498,7 @@ cmd_read_config() {
   local coverage_threshold="$DEFAULT_COVERAGE_THRESHOLD"
   local skip_full_verify="$DEFAULT_SKIP_FULL_VERIFY"
   local autonomous_pr="$DEFAULT_AUTONOMOUS_PR"
+  local commit_lock_timeout_seconds="$DEFAULT_COMMIT_LOCK_TIMEOUT_SECONDS"
 
   # Layer 2: .harness/config.json
   local config_file=".harness/config.json"
@@ -449,12 +514,14 @@ cmd_read_config() {
     val=$(json_get "$config_file" "coverage_threshold") && [[ -n "$val" ]] && coverage_threshold="$val"
     val=$(json_get "$config_file" "skip_full_verify") && [[ -n "$val" ]] && skip_full_verify=$(echo "$val" | tr '[:upper:]' '[:lower:]')
     val=$(json_get "$config_file" "autonomous_pr") && [[ -n "$val" ]] && autonomous_pr=$(echo "$val" | tr '[:upper:]' '[:lower:]')
+    val=$(json_get "$config_file" "commit_lock_timeout_seconds") && [[ -n "$val" ]] && commit_lock_timeout_seconds="$val"
   fi
 
   # Layer 3: CLI args (via EXTRA_ARGS)
   # Schema fields: max_spec_rounds, max_eval_rounds, cross_model_review,
   # cross_model_peer, auto_retro, claude_md_path, max_verify_rounds,
-  # coverage_threshold, skip_full_verify, autonomous_pr.
+  # coverage_threshold, skip_full_verify, autonomous_pr,
+  # commit_lock_timeout_seconds.
   local i=0
   while [[ $i -lt ${#EXTRA_ARGS[@]} ]]; do
     case "${EXTRA_ARGS[$i]}" in
@@ -468,6 +535,7 @@ cmd_read_config() {
       --coverage-threshold) coverage_threshold="${EXTRA_ARGS[$((i+1))]}"; i=$((i+2)) ;;
       --skip-full-verify) skip_full_verify="${EXTRA_ARGS[$((i+1))]}"; i=$((i+2)) ;;
       --autonomous-pr) autonomous_pr="$(echo "${EXTRA_ARGS[$((i+1))]}" | tr '[:upper:]' '[:lower:]')"; i=$((i+2)) ;;
+      --commit-lock-timeout-seconds) commit_lock_timeout_seconds="${EXTRA_ARGS[$((i+1))]}"; i=$((i+2)) ;;
       *) echo "Error: Unknown config option: ${EXTRA_ARGS[$i]}" >&2; exit 1 ;;
     esac
   done
@@ -484,6 +552,7 @@ MAX_VERIFY_ROUNDS=${max_verify_rounds}
 COVERAGE_THRESHOLD=${coverage_threshold}
 SKIP_FULL_VERIFY=${skip_full_verify}
 AUTONOMOUS_PR=${autonomous_pr}
+COMMIT_LOCK_TIMEOUT_SECONDS=${commit_lock_timeout_seconds}
 ENDCONFIG
 }
 

@@ -71,6 +71,7 @@ Delegate ALL file-system and git bookkeeping to the engine.
 | `coverage_threshold` | `85` | Hard minimum — FAIL if below this % |
 | `skip_full_verify` | `false` | `true` → skip full-verify phase |
 | `autonomous_pr` | `true` | `false` → write `.harness/<task-id>/pr-handoff.md` instead of running `gh pr create` |
+| `commit_lock_timeout_seconds` | `120` | 1-3600; 120s typical to absorb pre-commit hooks |
 
 **Precedence**: defaults < `.harness/config.json` < invocation args
 
