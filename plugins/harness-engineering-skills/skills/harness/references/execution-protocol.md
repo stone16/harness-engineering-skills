@@ -29,12 +29,13 @@
    PR because `autonomous_pr=false`; user/operator must create the PR from
    `.harness/<task-id>/pr-handoff.md`, then provide the real PR URL for
    `$ENGINE pass-pr --pr-url <url>`
+8. **cohort partial-PASS escalation** — at least one cohort member exhausted `max_eval_rounds` while peers in the same cohort reached PASS; user must split the failing CP, supply hints + retry, or abort the cohort.
 
 `PR_HANDOFF_OK` is the only PR-creation human-input path. Do not bypass
 `$ENGINE create-pr` by routing normal execution through `ship`,
 `superpowers:finishing-a-development-branch`, or direct `gh pr create`.
 
-**Everything else is autonomous.** Phase transitions, skill invocations, sub-agent spawning, review-loop execution — all happen automatically. The engine's phase gates enforce correctness.
+These eight scenarios are the only pause points. **Everything else is autonomous.** Phase transitions, skill invocations, sub-agent spawning, review-loop execution — all happen automatically. The engine's phase gates enforce correctness.
 
 ## Testing Strategy (By Checkpoint Type)
 
@@ -137,6 +138,28 @@ One match → load. Multiple → ask user. None → inform user.
       - REVIEW (auto_resolvable=false) → escalate to human:
                → Pause, show evaluation.md + evidence to user
                → User decides: provide guidance, fix manually, or abort
+
+   #### Cohort Execution Loop
+
+   When `enable_parallel_cohorts=true` and the next runnable unit is a
+   multi-member `parallel_group` cohort, run the cohort loop as a sibling to
+   the serial per-checkpoint loop:
+
+   a. `$ENGINE begin-cohort --task-id <id> --group <letter>`
+   b. Start parallel dispatch of Generators in a single Agent-tool batch in Claude Code,
+      or as `&`-backgrounded `claude-agent-invoke.sh` calls in Codex.
+      Each Generator receives only its checkpoint context, writes its
+      own atomic commits and `output-summary.md`, and uses a per-Generator timeout reusing the GNU-`timeout` precedent at `claude-agent-invoke.sh:88-104`
+      with the same fallback shape.
+   c. After all Generators finish, run parallel Evaluators after all Generators finish;
+      each Evaluator receives only its member checkpoint
+      spec, member diff, member `output-summary.md`, and
+      `protocol-quick-ref.md`.
+   d. Aggregate member verdicts: all PASS → `$ENGINE pass-cohort --task-id <id> --group <letter>`;
+      any member FAIL or REVIEW follows the same retry rules as the
+      per-checkpoint loop for that member. If one or more members exhaust
+      `max_eval_rounds` while peers in the same cohort reached PASS, escalate
+      via the cohort partial-PASS pause scenario above.
 
 4. E2E verification (proceed automatically after last checkpoint passes):
    → $ENGINE begin-e2e --task-id <id>

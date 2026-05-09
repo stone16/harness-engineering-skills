@@ -76,6 +76,7 @@ Everything else is autonomous. Record any remaining ambiguities in the spec's
      absent for gap classification.
    → Convert the approved design into Harness spec format (see protocol-quick-ref.md)
    → Include checkpoints with ### Checkpoint NN: <title> format
+   → During spec drafting, consider `parallel_group` cohort declarations for independent checkpoints and cite the `parallel_group_safety` Spec Evaluator check when grouping depends on complete Files of interest and compatible Type metadata.
    → Set status: draft in YAML frontmatter
 
 4. Spawn Spec Evaluator sub-agent for spec review  (AUTONOMOUS — no user pause):
