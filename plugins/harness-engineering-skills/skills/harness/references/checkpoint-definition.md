@@ -159,10 +159,13 @@ Every checkpoint MUST include at least one testability criterion. Strategy diffe
 
 ## Dependency Rules
 
-- Checkpoints execute **sequentially** — CP(N) can assume CP(1) through CP(N-1) are complete
-- `Depends on` declares data dependencies (e.g., "CP03 uses the hook created in CP01") — used by E2E agent for data-flow tracing
-- Execution order is always linear regardless of dependency structure
-- If two checkpoints are completely independent, order does not matter, but numbering still increments
+- Checkpoints in the same `parallel_group` execute concurrently within a cohort; cohorts execute sequentially.
+- A checkpoint may assume that all PASS members of every prior cohort are complete.
+- Cohort order is determined by the lowest checkpoint number in each cohort.
+- `Depends on` declares data dependencies (e.g., "CP03 uses the hook created in CP01") — used by E2E agent for data-flow tracing.
+- The engine rejects cohorts whose members declare `Depends on` edges among themselves.
+- If two checkpoints are completely independent, they may share a `parallel_group`; otherwise numbering still increments and absent `parallel_group` fields preserve serial execution.
+- Mirror tokens for the cohort engine contract: `BEGIN_COHORT_OK`, `PASS_COHORT_OK`, and `commit_lock_timeout_seconds`.
 
 ---
 
@@ -238,6 +241,7 @@ are in play simultaneously.
 | Scope | Yes | Objective statement — Generator's scope constraint binds here |
 | Depends on | No | Upstream data dependency — E2E agent uses for data-flow tracing |
 | Type | Yes | Determines which Tier 1 checks the Evaluator runs (frontend \| backend \| fullstack \| infrastructure) |
+| parallel_group | No | Cohort letter (single uppercase A-Z); checkpoints with the same letter are dispatched concurrently. Absent = single-member cohort (serial). |
 | Acceptance criteria | Yes | Evaluator's verification checklist — must be testable |
 | Files of interest | No | Reference information — Generator may go beyond this list |
 | Effort estimate | Yes | Baseline for magnitude warning (S/M/L) |

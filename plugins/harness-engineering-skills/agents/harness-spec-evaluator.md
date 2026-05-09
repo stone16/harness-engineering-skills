@@ -87,6 +87,16 @@ For each checkpoint evaluate:
      a `severity: warning` concern with `suggested_fix: normalize the line to
      '- Type: <value>' so planner, engine, and downstream tools share one
      canonical shape`.
+   - **parallel_group_safety** — applies when two or more checkpoints share
+     the same `parallel_group` value. Detection rule: run a Files of interest completeness audit by comparing path-shaped tokens in cohort members'
+     Scope and Acceptance criteria against their declared `Files of interest`, skipping paths inside fenced code blocks and inline backticked spans; run a Type compatibility audit that warns when a cohort mixes `frontend` with
+     `backend` or `infrastructure` because verification strategies differ; run a parallel_group canonical shape audit that warns when a present
+     `parallel_group` value is not a single uppercase letter A-Z. Absence of
+     `parallel_group` is the canonical serial form and emits no warning.
+     Emit `severity: warning` with `suggested_fix: extend Files of interest to include any prose-mentioned paths, split the cohort along the Type boundary, or normalize the parallel_group value to a single uppercase letter`.
+     Mirror tokens for the cohort engine contract are `BEGIN_COHORT_OK`,
+     `PASS_COHORT_OK`, and `commit_lock_timeout_seconds`; keep these aligned
+     with the protocol quick reference.
 5. **Files of interest** — are the affected files listed? Are any missing?
 
 ### Phase 3: Cybernetic Completeness

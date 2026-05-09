@@ -17,8 +17,12 @@ set -uo pipefail
 #   status              Read git-state.json, output current phase/checkpoint/iteration
 #   discover            Scan .harness/ for approved specs on current branch
 #   begin-checkpoint    Record baseline_sha, create checkpoint directory structure
+#   begin-cohort        Record cohort members after deterministic safety checks
+#   with-commit-lock    Run a command under the per-task commit lock
 #   end-iteration       Record iteration end_sha after Generator commits
 #   pass-checkpoint     Verify evaluation PASS, write status.md=PASS, record final_sha
+#   escalate-checkpoint Mark checkpoint escalated for cohort partial-pass
+#   pass-cohort         Mark a cohort PASS after all members are terminal
 #   begin-e2e           Record e2e_baseline_sha, create e2e directory structure
 #   pass-e2e            Verify E2E report PASS, write status.md=PASS, record e2e_final_sha
 #   pass-review-loop    Verify completed review-loop artifacts, advance phase
@@ -158,6 +162,9 @@ DEFAULT_MAX_VERIFY_ROUNDS=3
 DEFAULT_COVERAGE_THRESHOLD=85
 DEFAULT_SKIP_FULL_VERIFY="false"
 DEFAULT_AUTONOMOUS_PR="true"
+DEFAULT_COMMIT_LOCK_TIMEOUT_SECONDS=120
+DEFAULT_ENABLE_PARALLEL_COHORTS="true"
+DEFAULT_MAX_PARALLEL_COHORT_SIZE=4
 
 # Global options
 TASK_ID=""
@@ -182,6 +189,14 @@ parse_args() {
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
+      --)
+        EXTRA_ARGS+=("$1")
+        shift
+        while [[ $# -gt 0 ]]; do
+          EXTRA_ARGS+=("$1")
+          shift
+        done
+        ;;
       --task-id)     TASK_ID="$2"; shift 2 ;;
       --checkpoint)  CHECKPOINT="$2"; shift 2 ;;
       --iteration)   ITERATION="$2"; shift 2 ;;
@@ -201,8 +216,12 @@ Commands:
   status                Show current execution state
   discover              Find approved specs on current branch
   begin-checkpoint      Start a new checkpoint (record baseline SHA)
+  begin-cohort          Start a checkpoint cohort (record members + baseline SHA)
+  with-commit-lock      Run a command under the per-task commit lock
   end-iteration         Record end of a Generator iteration
   pass-checkpoint       Mark checkpoint as PASS (requires evaluator PASS)
+  escalate-checkpoint   Mark checkpoint escalated for cohort partial-pass
+  pass-cohort           Mark a checkpoint cohort as PASS
   begin-e2e             Start E2E verification phase
   pass-e2e              Mark E2E as PASS (requires E2E report PASS)
   pass-review-loop      Verify completed review-loop artifacts, advance phase
@@ -223,6 +242,7 @@ Options:
   --task-id ID          Task identifier (required for most commands)
   --checkpoint NN       Checkpoint number (zero-padded, e.g., 01)
   --iteration N         Iteration number
+  --group GROUP         Cohort group for begin-cohort/pass-cohort
   --base-branch NAME    Base branch for scope-check (default: main)
   --help                Show this help
 EOF
@@ -295,6 +315,10 @@ current_sha() {
   git rev-parse HEAD 2>/dev/null
 }
 
+engine_script_dir() {
+  cd "$(dirname "${BASH_SOURCE[0]}")" && pwd
+}
+
 require_next_arg() {
   local option="$1"
   local index="$2"
@@ -302,6 +326,137 @@ require_next_arg() {
     echo "Error: ${option} requires a value" >&2
     exit 1
   fi
+}
+
+parse_group_arg() {
+  local group=""
+  local i=0
+  while [[ $i -lt ${#EXTRA_ARGS[@]} ]]; do
+    case "${EXTRA_ARGS[$i]}" in
+      --group)
+        require_next_arg "--group" "$i"
+        group="${EXTRA_ARGS[$((i+1))]}"
+        i=$((i+2))
+        ;;
+      *) echo "Error: Unknown ${COMMAND} option: ${EXTRA_ARGS[$i]}" >&2; exit 1 ;;
+    esac
+  done
+
+  if [[ -z "$group" ]]; then
+    echo "Error: --group is required for this command" >&2
+    exit 1
+  fi
+
+  if [[ ! "$group" =~ ^[A-Z]$ && ! "$group" =~ ^[0-9]{2}$ ]]; then
+    echo "Error: --group must be a single uppercase letter A-Z or a two-digit checkpoint id (got: ${group})" >&2
+    exit 1
+  fi
+
+  printf '%s\n' "$group"
+}
+
+commit_lock_timeout_seconds() {
+  local timeout="$DEFAULT_COMMIT_LOCK_TIMEOUT_SECONDS"
+  local config_file=".harness/config.json"
+  if [[ -f "$config_file" ]]; then
+    local val
+    val=$(json_get "$config_file" "commit_lock_timeout_seconds")
+    [[ -n "$val" ]] && timeout="$val"
+  fi
+  printf '%s\n' "$timeout"
+}
+
+# ============================================================================
+# Helper: acquire_commit_lock
+# ============================================================================
+
+acquire_commit_lock() {
+  local task_id="$1"
+  shift
+
+  if [[ -z "$task_id" ]]; then
+    echo "Error: task_id is required for acquire_commit_lock" >&2
+    return 1
+  fi
+  if [[ $# -eq 0 ]]; then
+    echo "Error: acquire_commit_lock requires a callback command" >&2
+    return 1
+  fi
+  if [[ -n "${HARNESS_COMMIT_LOCK_HELD:-}" && "${HARNESS_COMMIT_LOCK_HELD}" == "$task_id" ]]; then
+    "$@"
+    return $?
+  fi
+
+  local timeout lock_dir lock_path
+  timeout="$(commit_lock_timeout_seconds)"
+  lock_dir=".harness/${task_id}"
+  lock_path="${lock_dir}/.commit.lock"
+  mkdir -p "$lock_dir"
+  : > "$lock_path"
+
+  if command -v flock >/dev/null 2>&1; then
+    (
+      flock -x -w "$timeout" 9 || return 1
+      HARNESS_COMMIT_LOCK_HELD="$task_id" "$@"
+    ) 9>"$lock_path"
+    return $?
+  fi
+
+  echo "using mkdir fallback commit lock for ${lock_path}" >&2
+  local fallback_dir="${lock_path}.dir"
+  local start now elapsed
+  start=$(date +%s)
+  while ! mkdir "$fallback_dir" 2>/dev/null; do
+    now=$(date +%s)
+    elapsed=$((now - start))
+    if [[ "$elapsed" -ge "$timeout" ]]; then
+      echo "Error: timed out acquiring commit lock at ${lock_path} after ${timeout}s" >&2
+      return 1
+    fi
+    sleep 1
+  done
+
+  HARNESS_COMMIT_LOCK_HELD="$task_id" "$@"
+  local status=$?
+  rmdir "$fallback_dir" 2>/dev/null || true
+  return "$status"
+}
+
+with_commit_lock_callback() {
+  local start_sha
+  start_sha="$(current_sha)"
+  HARNESS_COMMIT_LOCK_START_SHA="$start_sha" "$@"
+}
+
+# ============================================================================
+# Command: with-commit-lock
+# ============================================================================
+
+cmd_with_commit_lock() {
+  require_task_id
+  require_git_state
+
+  local command_args=()
+  local seen_separator="false"
+  for arg in "${EXTRA_ARGS[@]}"; do
+    if [[ "$seen_separator" == "false" ]]; then
+      if [[ "$arg" == "--" ]]; then
+        seen_separator="true"
+      else
+        echo "Error: with-commit-lock expects '--' before the command" >&2
+        exit 1
+      fi
+    else
+      command_args+=("$arg")
+    fi
+  done
+
+  if [[ "${#command_args[@]}" -eq 0 ]]; then
+    echo "Error: with-commit-lock requires a command after '--'" >&2
+    exit 1
+  fi
+
+  acquire_commit_lock "$TASK_ID" with_commit_lock_callback "${command_args[@]}"
 }
 
 cmd_scope_check() {
@@ -407,6 +562,9 @@ cmd_read_config() {
   local coverage_threshold="$DEFAULT_COVERAGE_THRESHOLD"
   local skip_full_verify="$DEFAULT_SKIP_FULL_VERIFY"
   local autonomous_pr="$DEFAULT_AUTONOMOUS_PR"
+  local commit_lock_timeout_seconds="$DEFAULT_COMMIT_LOCK_TIMEOUT_SECONDS"
+  local enable_parallel_cohorts="$DEFAULT_ENABLE_PARALLEL_COHORTS"
+  local max_parallel_cohort_size="$DEFAULT_MAX_PARALLEL_COHORT_SIZE"
 
   # Layer 2: .harness/config.json
   local config_file=".harness/config.json"
@@ -422,12 +580,17 @@ cmd_read_config() {
     val=$(json_get "$config_file" "coverage_threshold") && [[ -n "$val" ]] && coverage_threshold="$val"
     val=$(json_get "$config_file" "skip_full_verify") && [[ -n "$val" ]] && skip_full_verify=$(echo "$val" | tr '[:upper:]' '[:lower:]')
     val=$(json_get "$config_file" "autonomous_pr") && [[ -n "$val" ]] && autonomous_pr=$(echo "$val" | tr '[:upper:]' '[:lower:]')
+    val=$(json_get "$config_file" "commit_lock_timeout_seconds") && [[ -n "$val" ]] && commit_lock_timeout_seconds="$val"
+    val=$(json_get "$config_file" "enable_parallel_cohorts") && [[ -n "$val" ]] && enable_parallel_cohorts=$(echo "$val" | tr '[:upper:]' '[:lower:]')
+    val=$(json_get "$config_file" "max_parallel_cohort_size") && [[ -n "$val" ]] && max_parallel_cohort_size="$val"
   fi
 
   # Layer 3: CLI args (via EXTRA_ARGS)
   # Schema fields: max_spec_rounds, max_eval_rounds, cross_model_review,
   # cross_model_peer, auto_retro, claude_md_path, max_verify_rounds,
-  # coverage_threshold, skip_full_verify, autonomous_pr.
+  # coverage_threshold, skip_full_verify, autonomous_pr,
+  # commit_lock_timeout_seconds, enable_parallel_cohorts,
+  # max_parallel_cohort_size.
   local i=0
   while [[ $i -lt ${#EXTRA_ARGS[@]} ]]; do
     case "${EXTRA_ARGS[$i]}" in
@@ -441,6 +604,9 @@ cmd_read_config() {
       --coverage-threshold) coverage_threshold="${EXTRA_ARGS[$((i+1))]}"; i=$((i+2)) ;;
       --skip-full-verify) skip_full_verify="${EXTRA_ARGS[$((i+1))]}"; i=$((i+2)) ;;
       --autonomous-pr) autonomous_pr="$(echo "${EXTRA_ARGS[$((i+1))]}" | tr '[:upper:]' '[:lower:]')"; i=$((i+2)) ;;
+      --commit-lock-timeout-seconds) commit_lock_timeout_seconds="${EXTRA_ARGS[$((i+1))]}"; i=$((i+2)) ;;
+      --enable-parallel-cohorts) enable_parallel_cohorts="$(echo "${EXTRA_ARGS[$((i+1))]}" | tr '[:upper:]' '[:lower:]')"; i=$((i+2)) ;;
+      --max-parallel-cohort-size) max_parallel_cohort_size="${EXTRA_ARGS[$((i+1))]}"; i=$((i+2)) ;;
       *) echo "Error: Unknown config option: ${EXTRA_ARGS[$i]}" >&2; exit 1 ;;
     esac
   done
@@ -457,6 +623,9 @@ MAX_VERIFY_ROUNDS=${max_verify_rounds}
 COVERAGE_THRESHOLD=${coverage_threshold}
 SKIP_FULL_VERIFY=${skip_full_verify}
 AUTONOMOUS_PR=${autonomous_pr}
+COMMIT_LOCK_TIMEOUT_SECONDS=${commit_lock_timeout_seconds}
+ENABLE_PARALLEL_COHORTS=${enable_parallel_cohorts}
+MAX_PARALLEL_COHORT_SIZE=${max_parallel_cohort_size}
 ENDCONFIG
 }
 
@@ -746,6 +915,106 @@ ENDOUT
 }
 
 # ============================================================================
+# Command: begin-cohort
+# ============================================================================
+
+cmd_begin_cohort() {
+  require_task_id
+  require_git_state
+  require_phase "init" "checkpoints" "Task has advanced past the checkpoint phase. Start a new task instead of re-running begin-cohort."
+
+  # The parallel_group parser is delegated to _cohort_spec.py; this command
+  # remains the engine surface that emits BEGIN_COHORT_OK.
+  local group
+  group="$(parse_group_arg)"
+
+  local dir spec gs sha tmp members
+  dir="$(harness_dir)"
+  spec="${dir}/spec.md"
+  gs="$(git_state_file)"
+  sha="$(current_sha)"
+  tmp=$(mktemp)
+
+  local enable_parallel_cohorts="$DEFAULT_ENABLE_PARALLEL_COHORTS"
+  local max_parallel_cohort_size="$DEFAULT_MAX_PARALLEL_COHORT_SIZE"
+  local config_file=".harness/config.json"
+  if [[ -f "$config_file" ]]; then
+    local val
+    val=$(json_get "$config_file" "enable_parallel_cohorts")
+    [[ -n "$val" ]] && enable_parallel_cohorts=$(echo "$val" | tr '[:upper:]' '[:lower:]')
+    val=$(json_get "$config_file" "max_parallel_cohort_size")
+    [[ -n "$val" ]] && max_parallel_cohort_size="$val"
+  fi
+
+  if [[ ! -f "$spec" ]]; then
+    echo "Error: spec.md not found at ${spec}" >&2
+    rm -f "$tmp"
+    exit 1
+  fi
+
+  local cohort_spec_py
+  cohort_spec_py="$(engine_script_dir)/_cohort_spec.py"
+  if ! members=$(python3 "$cohort_spec_py" begin-cohort "$spec" "$gs" "$group" "$sha" "$tmp" "$enable_parallel_cohorts" "$max_parallel_cohort_size"); then
+    rm -f "$tmp"
+    exit 1
+  fi
+
+  mv "$tmp" "$gs" || { rm -f "$tmp"; exit 1; }
+
+  cat <<ENDOUT
+BEGIN_COHORT_OK
+TASK_ID=${TASK_ID}
+GROUP=${group}
+MEMBERS=${members}
+BASELINE_SHA=${sha}
+ENDOUT
+}
+
+detect_drift_shadow() {
+  local checkpoint="$1"
+  local iteration="$2"
+  local range_start="$3"
+  local range_end="$4"
+  local gs spec cohort
+  gs="$(git_state_file)"
+  spec="$(harness_dir)/spec.md"
+  cohort=$(json_get_nested "$gs" "checkpoints.${checkpoint}.cohort")
+  [[ -z "$cohort" ]] && return 0
+  [[ -z "$range_start" || -z "$range_end" ]] && return 0
+  [[ -f "$spec" ]] || return 0
+
+  local changed
+  changed=$(git diff --name-only "${range_start}..${range_end}" 2>/dev/null || true)
+  [[ -z "$changed" ]] && return 0
+
+  local iter_dir
+  iter_dir="$(harness_dir)/checkpoints/${checkpoint}/iter-${iteration}"
+  mkdir -p "$iter_dir"
+
+  local cohort_spec_py
+  cohort_spec_py="$(engine_script_dir)/_cohort_spec.py"
+  python3 "$cohort_spec_py" drift-shadow "$spec" "$gs" "$checkpoint" "$cohort" "$iter_dir" "$iteration" "$changed"
+}
+
+record_iteration_and_detect_drift() {
+  local gs="$1"
+  local checkpoint="$2"
+  local iteration="$3"
+  local sha="$4"
+  local range_start="${HARNESS_COMMIT_LOCK_START_SHA:-}"
+  if [[ -z "$range_start" ]]; then
+    if [[ "$iteration" -gt 1 ]]; then
+      local previous_iteration=$((iteration - 1))
+      range_start=$(json_get_nested "$gs" "checkpoints.${checkpoint}.iterations.${previous_iteration}.end_sha")
+    fi
+    [[ -z "$range_start" ]] && range_start=$(json_get_nested "$gs" "checkpoints.${checkpoint}.baseline_sha")
+  fi
+
+  json_add_iteration "$gs" "$checkpoint" "$iteration" "$sha" || return 1
+  detect_drift_shadow "$checkpoint" "$iteration" "$range_start" "$sha"
+}
+
+# ============================================================================
 # Command: end-iteration
 # ============================================================================
 
@@ -782,8 +1051,11 @@ else:
     echo "Warning: Empty iteration — HEAD is still at baseline SHA" >&2
   fi
 
-  # Record end_sha
-  json_add_iteration "$gs" "$CHECKPOINT" "$ITERATION" "$sha"
+  # Record end_sha and run drift detection under the same per-task lock used
+  # for concurrent generator commit boundaries.
+  if ! acquire_commit_lock "$TASK_ID" record_iteration_and_detect_drift "$gs" "$CHECKPOINT" "$ITERATION" "$sha"; then
+    exit 1
+  fi
 
   # Pre-create next iteration directory
   local next_iter=$((ITERATION + 1))
@@ -874,6 +1146,14 @@ print(max((int(k) for k in iters.keys()), default=0))
     echo "PHASE_BLOCKED" >&2
     echo "REASON=${last_eval} verdict is ${eval_verdict}; checkpoint pass requires PASS" >&2
     echo "NEXT_STEP=Send evaluation feedback to the Generator, fix, end a new iteration, and re-evaluate" >&2
+    exit 1
+  fi
+
+  local drift_event="${cp_dir}/iter-${last_iter}/drift-event.md"
+  if [[ -f "$drift_event" ]]; then
+    echo "PHASE_BLOCKED" >&2
+    echo "REASON=${drift_event} exists; checkpoint ${CHECKPOINT} has unresolved cohort drift" >&2
+    echo "NEXT_STEP=Retry checkpoint ${CHECKPOINT} without touching peer cohort files" >&2
     exit 1
   fi
 
@@ -970,6 +1250,129 @@ TASK_ID=${TASK_ID}
 CHECKPOINT=${CHECKPOINT}
 FINAL_SHA=${sha}
 TOTAL_ITERATIONS=${iter_count}
+STATUS_FILE=${cp_dir}/status.md
+ENDOUT
+}
+
+# ============================================================================
+# Command: pass-cohort
+# ============================================================================
+
+cmd_pass_cohort() {
+  require_task_id
+  require_git_state
+  require_phase "checkpoints" "Run: \$ENGINE begin-cohort --task-id ${TASK_ID} --group <group> before pass-cohort"
+
+  local group
+  group="$(parse_group_arg)"
+
+  local gs tmp status
+  gs="$(git_state_file)"
+  tmp=$(mktemp)
+
+  if ! status=$(python3 - "$gs" "$group" "$tmp" <<'PY'
+import json
+import pathlib
+import sys
+
+state_path = pathlib.Path(sys.argv[1])
+group = sys.argv[2]
+out_path = pathlib.Path(sys.argv[3])
+
+state = json.loads(state_path.read_text())
+cohort = state.get("cohorts", {}).get(group)
+if not cohort:
+    print(f"Error: cohort {group} not found in {state_path}", file=sys.stderr)
+    sys.exit(1)
+
+members = cohort.get("members") or []
+if not members:
+    print(f"Error: cohort {group} has no recorded members", file=sys.stderr)
+    sys.exit(1)
+
+checkpoints = state.get("checkpoints", {})
+escalated = False
+for cp_id in members:
+    cp = checkpoints.get(cp_id, {})
+    cp_status = str(cp.get("status", "")).lower()
+    if cp_status == "escalated" or cp.get("aborted") is True:
+        escalated = True
+        continue
+    if cp_status == "passed" or cp.get("final_sha"):
+        continue
+    print(
+        f"Error: cohort {group} member CP{cp_id} is not passed or escalated",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+cohort["status"] = "partial-pass" if escalated else "passed"
+out_path.write_text(json.dumps(state, indent=2) + "\n")
+print(cohort["status"])
+PY
+  ); then
+    rm -f "$tmp"
+    exit 1
+  fi
+
+  mv "$tmp" "$gs" || { rm -f "$tmp"; exit 1; }
+
+  cat <<ENDOUT
+PASS_COHORT_OK
+TASK_ID=${TASK_ID}
+GROUP=${group}
+STATUS=${status}
+ENDOUT
+}
+
+# ============================================================================
+# Command: escalate-checkpoint
+# ============================================================================
+
+cmd_escalate_checkpoint() {
+  require_task_id
+  require_checkpoint
+  require_git_state
+  require_phase "checkpoints" "Checkpoint escalation is only valid during checkpoint execution"
+
+  local gs tmp cp_dir
+  gs="$(git_state_file)"
+  tmp=$(mktemp)
+  cp_dir="$(harness_dir)/checkpoints/${CHECKPOINT}"
+
+  python3 - "$gs" "$CHECKPOINT" "$tmp" <<'PY'
+import json
+import pathlib
+import sys
+
+state_path = pathlib.Path(sys.argv[1])
+checkpoint = sys.argv[2]
+out_path = pathlib.Path(sys.argv[3])
+
+state = json.loads(state_path.read_text())
+checkpoints = state.setdefault("checkpoints", {})
+cp = checkpoints.setdefault(checkpoint, {})
+cp["status"] = "escalated"
+out_path.write_text(json.dumps(state, indent=2) + "\n")
+PY
+
+  mv "$tmp" "$gs" || { rm -f "$tmp"; exit 1; }
+  mkdir -p "$cp_dir"
+  cat > "${cp_dir}/status.md" <<ENDSTATUS
+---
+checkpoint: ${CHECKPOINT}
+result: ESCALATED
+---
+
+## Summary
+
+Checkpoint ${CHECKPOINT} escalated by engine command.
+ENDSTATUS
+
+  cat <<ENDOUT
+ESCALATE_CHECKPOINT_OK
+TASK_ID=${TASK_ID}
+CHECKPOINT=${CHECKPOINT}
 STATUS_FILE=${cp_dir}/status.md
 ENDOUT
 }
@@ -1202,7 +1605,6 @@ print(data.get('session', {}).get('id', ''))
     exit 1
   fi
 
-  local gs
   gs="$(git_state_file)"
   json_set "$gs" "phase" "review-loop"
   json_set "$gs" "review_loop_status" "COMPLETE"
@@ -1945,6 +2347,9 @@ for header in ['## Constraints', '## Technical Approach']:
         break
 " "$spec")
 
+  local cohort_restrictions
+  cohort_restrictions=$(python3 "$(engine_script_dir)/_cohort_spec.py" peer-restrictions "$spec" "$gs" "$CHECKPOINT")
+
   # Write context.md
   local cp_dir
   cp_dir="$dir/checkpoints/${CHECKPOINT}"
@@ -1983,6 +2388,8 @@ ${prior_progress:-No prior checkpoints completed.}
 ## Constraints
 
 ${constraints:-No explicit constraints in spec.}
+
+${cohort_restrictions}
 
 ## Files of Interest
 
@@ -2263,6 +2670,13 @@ print(count)
         reason="Cannot begin checkpoint from state: ${current_state}. Must complete current checkpoint first."
       fi
       ;;
+    begin-cohort)
+      if [[ "$current_state" == "init" || "$current_state" == "between-checkpoints" || "$current_state" == "all-checkpoints-passed" ]]; then
+        valid="true"
+      else
+        reason="Cannot begin cohort from state: ${current_state}. Must complete current checkpoint or cohort member first."
+      fi
+      ;;
     end-iteration)
       if [[ "$current_state" == "post-begin-checkpoint" || "$current_state" == "post-iteration" ]]; then
         valid="true"
@@ -2275,6 +2689,20 @@ print(count)
         valid="true"
       else
         reason="Cannot pass checkpoint from state: ${current_state}. Must have at least one iteration."
+      fi
+      ;;
+    escalate-checkpoint)
+      if [[ "$phase" == "checkpoints" ]]; then
+        valid="true"
+      else
+        reason="Cannot escalate checkpoint from phase: ${phase}. Must be in checkpoints phase."
+      fi
+      ;;
+    pass-cohort)
+      if [[ "$phase" == "checkpoints" ]]; then
+        valid="true"
+      else
+        reason="Cannot pass cohort from phase: ${phase}. Must be in checkpoints phase."
       fi
       ;;
     begin-e2e)
@@ -2381,6 +2809,7 @@ print(count)
 # Main Dispatch
 # ============================================================================
 
+# ============ helpers end ============
 parse_args "$@"
 
 case "$COMMAND" in
@@ -2389,8 +2818,12 @@ case "$COMMAND" in
   status)               cmd_status ;;
   discover)             cmd_discover ;;
   begin-checkpoint)     cmd_begin_checkpoint ;;
+  begin-cohort)         cmd_begin_cohort ;;
+  with-commit-lock)     cmd_with_commit_lock ;;
   end-iteration)        cmd_end_iteration ;;
   pass-checkpoint)      cmd_pass_checkpoint ;;
+  escalate-checkpoint)  cmd_escalate_checkpoint ;;
+  pass-cohort)          cmd_pass_cohort ;;
   begin-e2e)            cmd_begin_e2e ;;
   pass-e2e)             cmd_pass_e2e ;;
   pass-review-loop)     cmd_pass_review_loop ;;

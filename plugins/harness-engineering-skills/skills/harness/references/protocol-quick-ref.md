@@ -37,6 +37,7 @@ the rationale.
 - Acceptance criteria: ...
 - Depends on: ...
 - Type: frontend | backend | fullstack | infrastructure
+- parallel_group: <letter>
 ```
 Each checkpoint MUST use `### Checkpoint NN: <title>` heading (zero-padded number). The engine uses this exact pattern for `assemble-context` extraction.
 
@@ -45,6 +46,10 @@ compatibility form, `- **Type**: <value>`, to prevent legacy specs from
 silently degrading to `checkpoint_type: unknown`; the Spec Evaluator still
 warns on that decorated form and recommends normalizing to the canonical line.
 Missing or invalid Type metadata is an engine error, not an `unknown` fallback.
+
+The optional `parallel_group: <letter>` metadata shape declares a cohort.
+`<letter>` is a single uppercase letter (A-Z); checkpoints sharing the same letter form a cohort dispatched concurrently.
+Absence of the field means the checkpoint forms its own single-member cohort (today's serial behavior). No explicit serial sentinel form is recognized.
 
 ### Evidence Requirements (enforced by Spec Evaluator Phase 5)
 
@@ -569,9 +574,18 @@ Sections:
   "checkpoints": {
     "01": {
       "baseline_sha": "...",
+      "cohort": "<letter>",
       "iterations": { "1": { "end_sha": "..." } },
       "final_sha": "...",
+      "status": "passed | escalated | (empty)",
       "aborted": false
+    }
+  },
+  "cohorts": {
+    "A": {
+      "members": ["01", "02"],
+      "status": "pending | passed | partial-pass",
+      "baseline_sha": "..."
     }
   },
   "e2e_baseline_sha": "...",
@@ -591,6 +605,9 @@ Sections:
 
 **Phase commands:**
 - `pass-checkpoint` — requires latest iteration `output-summary.md`, latest iteration `evaluation.md`, `evaluation.md` verdict PASS, and fresh `evaluator-session-id.txt`; then records final SHA.
+- `with-commit-lock --task-id <id> -- <command>` — runs the command under `.harness/<task-id>/.commit.lock`; cohort Generators use this to keep their `git commit` and `end-iteration` boundary in one lock window.
+- `escalate-checkpoint --task-id <id> --checkpoint <NN>` — records `checkpoints.<NN>.status = "escalated"` and writes `status.md` with `result: ESCALATED`; cohort partial-PASS uses this engine-owned state instead of manual `git-state.json` edits.
+- `pass-cohort --task-id <id> --group <letter>` — records `passed` when all members passed, or `partial-pass` when one or more members are engine-marked `escalated` or `aborted`.
 - `pass-e2e` — requires latest `e2e/iter-N/e2e-report.md` verdict PASS; then records final SHA and sets phase to `e2e`.
 - `pass-review-loop` — verifies `.review-loop/latest/summary.md` + `rounds.json` exist, `session.status` is `consensus` or `read_only_complete`, and `session.total_rounds >= 1`; then records the session id and sets phase to `review-loop`
 - `skip-review-loop` — only allowed when `cross_model_review=false` in config, sets phase to `review-loop`
@@ -602,6 +619,39 @@ Sections:
 - `complete` — sets phase to `done`
 
 When `aborted` is `true`, the checkpoint is terminal — skipped by status, validation, and abort auto-detection.
+
+**Engine output markers:**
+
+| Marker | Meaning |
+|--------|---------|
+| `BEGIN_COHORT_OK` | `begin-cohort` accepted a cohort, recorded its members, and passed Tier 1 cohort safety checks. |
+| `PASS_COHORT_OK` | `pass-cohort` verified all cohort members reached a terminal allowed status and recorded the cohort as passed. |
+| `DRIFT_DETECTED` | `end-iteration` detected that a cohort member changed a peer-owned `Files of interest` path; output includes `OFFENDING_PATH=...` and `PEER_CHECKPOINT=...`, and the command exits non-zero. |
+
+Parallel cohort mirror key: `commit_lock_timeout_seconds` configures the
+per-task commit lock used by cohort-safe engine paths.
+
+---
+
+## drift-event.md
+
+Written under `.harness/<task-id>/checkpoints/<NN>/iter-<N>/drift-event.md`
+when `end-iteration` detects cohort drift.
+
+```yaml
+---
+offending_path: <path changed by this checkpoint>
+offending_checkpoint: <NN>
+peer_checkpoint: <NN that owns the path>
+severity: shadow
+detected_at: <ISO-8601 UTC timestamp>
+---
+```
+
+The artifact remains an audit record, but after the drift FAIL-mode flip the
+engine also emits `DRIFT_DETECTED` and exits non-zero. `pass-checkpoint` refuses
+to pass a checkpoint while any `drift-event.md` exists under that checkpoint's
+iteration directories.
 
 ---
 

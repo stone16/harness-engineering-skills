@@ -1,6 +1,6 @@
 ---
 name: harness
-version: 0.16.0
+version: 0.17.0
 description: |
   Cybernetics-based multi-agent orchestration for complex tasks. Coordinates a
   Planner → Generator → Evaluator → Retro pipeline with clean-context sub-agents,
@@ -71,6 +71,9 @@ Delegate ALL file-system and git bookkeeping to the engine.
 | `coverage_threshold` | `85` | Hard minimum — FAIL if below this % |
 | `skip_full_verify` | `false` | `true` → skip full-verify phase |
 | `autonomous_pr` | `true` | `false` → write `.harness/<task-id>/pr-handoff.md` instead of running `gh pr create` |
+| `commit_lock_timeout_seconds` | `120` | 1-3600; 120s typical to absorb pre-commit hooks |
+| `enable_parallel_cohorts` | `true` | `true`/`false`; false rejects multi-member cohorts |
+| `max_parallel_cohort_size` | `4` | 1-16; 4 covers typical Agent-tool batch limits |
 
 **Precedence**: defaults < `.harness/config.json` < invocation args
 
