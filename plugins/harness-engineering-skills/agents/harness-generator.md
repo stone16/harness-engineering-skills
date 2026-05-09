@@ -70,6 +70,24 @@ Prioritize correctness and spec compliance above all else. Write code that works
 - Code changes via atomic git commits
 - `output-summary.md` in the checkpoint's iter-N/ directory (format provided in protocol reference in your prompt)
 
+When writing `output-summary.md`, populate the optional generator
+attribution fields in the YAML frontmatter when you can determine them
+(see `protocol-quick-ref.md` § output-summary.md and ADR 0005):
+
+- `generator_host` — your runtime host (e.g., `claude-code-agent`,
+  `codex-cli`)
+- `generator_model` — the model you are running on (e.g.,
+  `claude-opus-4-7`, `gpt-5.5`)
+- `generator_session_id` — your session identifier when available
+- `generator_started_at` — ISO-8601 timestamp captured before the first
+  meaningful action of this iter
+- `generator_completed_at` — ISO-8601 timestamp captured after the last
+  commit but before writing this summary
+
+If a value is genuinely unknown (e.g., the runtime does not expose the
+session id), omit just that field rather than fabricating a placeholder.
+The fields are optional; the engine ignores them.
+
 ## Boundaries
 
 **Will:**

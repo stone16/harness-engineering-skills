@@ -15,10 +15,20 @@ status: draft | reviewing | approved
 branch: <git branch name>
 created: <ISO timestamp>
 updated: <ISO timestamp>
+# Optional planner attribution (see ADR 0005). Populate when host/model
+# is known; omit fields you cannot determine.
+planner_host: <claude-code | claude-cli | codex-cli | gemini-cli | other>
+planner_model: <e.g., claude-opus-4-7, gpt-5.5>
+planner_session_id: <session id from planning host, if available>
 ---
 ```
 
 Sections: Goal, Success Criteria, Checkpoints, Technical Approach, Out of Scope, Open Questions.
+
+The three `planner_*` fields are optional and exist purely for retrospective
+analysis. The engine ignores them; existing specs without them remain
+valid. See `docs/adr/0005-record-generator-and-planner-host-model.md` for
+the rationale.
 
 **Checkpoint heading format (REQUIRED by engine parser):**
 ```markdown
@@ -392,10 +402,22 @@ but dedicated verification documentation is absent. Other valid values are
 task_id: <matches spec>
 checkpoint: <number>
 iteration: <number>
+# Optional generator attribution (see ADR 0005). Populate when host/model
+# is known; omit fields you cannot determine.
+generator_host: <claude-code-agent | claude-cli | codex-cli | gemini-cli | other>
+generator_model: <e.g., gpt-5.5, claude-opus-4-7>
+generator_session_id: <session id from generation host, if available>
+generator_started_at: <ISO-8601 timestamp when this iter began>
+generator_completed_at: <ISO-8601 timestamp when this iter's commits landed>
 ---
 ```
 
 Sections: What Was Done (+ rationale), Files Modified, Git Commits (SHAs + messages), Rule Conflict Notes (empty if none), Notes for Evaluator.
+
+The five `generator_*` fields are optional. The engine ignores them;
+existing summaries without them remain valid. See
+`docs/adr/0005-record-generator-and-planner-host-model.md` for the
+rationale.
 
 ---
 
@@ -410,6 +432,10 @@ verdict: PASS | FAIL | REVIEW
 evaluator_agent: harness-evaluator
 evaluator_host: claude-code-agent | claude-cli | codex-cli | gemini-cli
 evaluator_session_id: <session id from evaluator agent>
+# Optional evaluator model (see ADR 0005). Recorded for symmetry with
+# generator_model and planner_model. Engine ignores; older evaluations
+# without it remain valid.
+evaluator_model: <e.g., claude-opus-4-7, gpt-5.5>
 ---
 ```
 

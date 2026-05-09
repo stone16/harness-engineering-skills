@@ -77,6 +77,14 @@ Everything else is autonomous. Record any remaining ambiguities in the spec's
    → Convert the approved design into Harness spec format (see protocol-quick-ref.md)
    → Include checkpoints with ### Checkpoint NN: <title> format
    → Set status: draft in YAML frontmatter
+   → Populate the optional planner attribution fields in the YAML
+     frontmatter when known (see protocol-quick-ref.md § spec.md and
+     ADR 0005):
+       planner_host       — your runtime host (e.g., claude-code, codex-cli)
+       planner_model      — the model you are running on (e.g., claude-opus-4-7)
+       planner_session_id — your session identifier, if available
+     Omit any individual field when the value is genuinely unknown rather
+     than fabricating a placeholder. The engine ignores these fields.
 
 4. Spawn Spec Evaluator sub-agent for spec review  (AUTONOMOUS — no user pause):
    → Agent(subagent_type: "harness-spec-evaluator", prompt: <spec + codebase context + protocol-quick-ref.md + host-conventions-card.md when scout_status: complete, or Card unavailable note + prior deferred rejections>)
