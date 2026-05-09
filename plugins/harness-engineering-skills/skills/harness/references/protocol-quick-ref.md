@@ -27,6 +27,7 @@ Sections: Goal, Success Criteria, Checkpoints, Technical Approach, Out of Scope,
 - Acceptance criteria: ...
 - Depends on: ...
 - Type: frontend | backend | fullstack | infrastructure
+- parallel_group: <letter>
 ```
 Each checkpoint MUST use `### Checkpoint NN: <title>` heading (zero-padded number). The engine uses this exact pattern for `assemble-context` extraction.
 
@@ -35,6 +36,10 @@ compatibility form, `- **Type**: <value>`, to prevent legacy specs from
 silently degrading to `checkpoint_type: unknown`; the Spec Evaluator still
 warns on that decorated form and recommends normalizing to the canonical line.
 Missing or invalid Type metadata is an engine error, not an `unknown` fallback.
+
+The optional `parallel_group: <letter>` metadata shape declares a cohort.
+`<letter>` is a single uppercase letter (A-Z); checkpoints sharing the same letter form a cohort dispatched concurrently.
+Absence of the field means the checkpoint forms its own single-member cohort (today's serial behavior). No explicit serial sentinel form is recognized.
 
 ### Evidence Requirements (enforced by Spec Evaluator Phase 5)
 
@@ -543,9 +548,17 @@ Sections:
   "checkpoints": {
     "01": {
       "baseline_sha": "...",
+      "cohort": "<letter>",
       "iterations": { "1": { "end_sha": "..." } },
       "final_sha": "...",
       "aborted": false
+    }
+  },
+  "cohorts": {
+    "A": {
+      "members": ["01", "02"],
+      "status": "pending | running | passed | partial-pass | aborted",
+      "baseline_sha": "..."
     }
   },
   "e2e_baseline_sha": "...",
@@ -576,6 +589,13 @@ Sections:
 - `complete` — sets phase to `done`
 
 When `aborted` is `true`, the checkpoint is terminal — skipped by status, validation, and abort auto-detection.
+
+**Engine output markers:**
+
+| Marker | Meaning |
+|--------|---------|
+| `BEGIN_COHORT_OK` | `begin-cohort` accepted a cohort, recorded its members, and passed Tier 1 cohort safety checks. |
+| `PASS_COHORT_OK` | `pass-cohort` verified all cohort members reached a terminal allowed status and recorded the cohort as passed. |
 
 ---
 
