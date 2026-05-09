@@ -1045,6 +1045,145 @@ BASELINE_SHA=${sha}
 ENDOUT
 }
 
+detect_drift_shadow() {
+  local checkpoint="$1"
+  local iteration="$2"
+  local gs spec cohort baseline
+  gs="$(git_state_file)"
+  spec="$(harness_dir)/spec.md"
+  cohort=$(json_get_nested "$gs" "checkpoints.${checkpoint}.cohort")
+  [[ -z "$cohort" ]] && return 0
+  baseline=$(json_get_nested "$gs" "checkpoints.${checkpoint}.baseline_sha")
+  [[ -z "$baseline" ]] && return 0
+  [[ -f "$spec" ]] || return 0
+
+  local changed
+  changed=$(git diff --name-only "${baseline}..HEAD" 2>/dev/null || true)
+  [[ -z "$changed" ]] && return 0
+
+  local iter_dir
+  iter_dir="$(harness_dir)/checkpoints/${checkpoint}/iter-${iteration}"
+  mkdir -p "$iter_dir"
+
+  python3 - "$spec" "$gs" "$checkpoint" "$cohort" "$iter_dir" "$changed" <<'PY'
+import json
+import pathlib
+import re
+import subprocess
+import sys
+
+spec_path = pathlib.Path(sys.argv[1])
+state_path = pathlib.Path(sys.argv[2])
+checkpoint = sys.argv[3]
+cohort = sys.argv[4]
+iter_dir = pathlib.Path(sys.argv[5])
+changed = [line for line in sys.argv[6].splitlines() if line.strip()]
+
+
+def strip_inline_code(text):
+    return re.sub(r"`[^`]*`", "", text)
+
+
+def canon_path(path):
+    value = path.strip()
+    value = re.sub(r"\s+\(new\)\s*$", "", value)
+    while value.startswith("./"):
+        value = value[2:]
+    return value.strip()
+
+
+def checkpoint_sections(text):
+    sections = {}
+    current = None
+    current_lines = []
+    in_fence = False
+    for line in text.splitlines():
+        if line.strip().startswith("```"):
+            in_fence = not in_fence
+        match = re.match(r"^### Checkpoint ([0-9]{2}):", line)
+        if match and not in_fence:
+            if current:
+                sections[current] = current_lines
+            current = match.group(1)
+            current_lines = [line]
+        elif current:
+            current_lines.append(line)
+    if current:
+        sections[current] = current_lines
+    return sections
+
+
+def files_of_interest(lines):
+    files = set()
+    in_fence = False
+    in_files = False
+    for raw_line in lines:
+        line = raw_line.rstrip("\n")
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        no_inline = strip_inline_code(line)
+        files_match = re.match(r"^\s*-\s*(?:\*\*)?Files of interest(?:\*\*)?:\s*(.*)$", no_inline, re.IGNORECASE)
+        if files_match:
+            in_files = True
+            inline = files_match.group(1).strip()
+            if inline:
+                for part in inline.split(","):
+                    path = canon_path(part)
+                    if path:
+                        files.add(path)
+            continue
+        metadata_match = re.match(r"^\s*-\s*(?:Scope|Depends on|Type|parallel_group|Acceptance criteria|Effort estimate)\b", no_inline, re.IGNORECASE)
+        if metadata_match:
+            in_files = False
+        if in_files:
+            item_match = re.match(r"^\s*-\s*(.+)$", no_inline)
+            if item_match:
+                for part in item_match.group(1).split(","):
+                    path = canon_path(part)
+                    if path:
+                        files.add(path)
+    return files
+
+
+state = json.loads(state_path.read_text())
+members = state.get("cohorts", {}).get(cohort, {}).get("members", [])
+if checkpoint not in members:
+    sys.exit(0)
+
+sections = checkpoint_sections(spec_path.read_text())
+own_files = files_of_interest(sections.get(checkpoint, []))
+peer_files = {}
+for member in members:
+    if member == checkpoint:
+        continue
+    for path in files_of_interest(sections.get(member, [])):
+        peer_files.setdefault(path, member)
+
+for raw_path in changed:
+    path = canon_path(raw_path)
+    peer = peer_files.get(path)
+    if peer and path not in own_files:
+        detected_at = subprocess.check_output(
+            ["date", "-u", "+%Y-%m-%dT%H:%M:%SZ"], text=True
+        ).strip()
+        (iter_dir / "drift-event.md").write_text(
+            "---\n"
+            f"offending_path: {path}\n"
+            f"offending_checkpoint: {checkpoint}\n"
+            f"peer_checkpoint: {peer}\n"
+            "severity: shadow\n"
+            f"detected_at: {detected_at}\n"
+            "---\n\n"
+            "Drift detected in shadow mode. The iteration proceeds normally.\n"
+        )
+        break
+PY
+}
+
 # ============================================================================
 # Command: end-iteration
 # ============================================================================
@@ -1084,6 +1223,8 @@ else:
 
   # Record end_sha
   json_add_iteration "$gs" "$CHECKPOINT" "$ITERATION" "$sha"
+
+  detect_drift_shadow "$CHECKPOINT" "$ITERATION"
 
   # Pre-create next iteration directory
   local next_iter=$((ITERATION + 1))

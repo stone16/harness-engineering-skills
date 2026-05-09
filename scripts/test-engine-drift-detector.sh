@@ -79,7 +79,7 @@ SPEC
 write_state() {
   local repo="$1"
   local task="$2"
-  local cohort_cp01="${3:-A}"
+  local cohort_cp01="${3-A}"
   local baseline
   baseline="$(cd "$repo" && git rev-parse HEAD)"
   cat > "$repo/.harness/$task/git-state.json" <<JSON
