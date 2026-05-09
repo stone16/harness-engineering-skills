@@ -17,8 +17,10 @@ set -uo pipefail
 #   status              Read git-state.json, output current phase/checkpoint/iteration
 #   discover            Scan .harness/ for approved specs on current branch
 #   begin-checkpoint    Record baseline_sha, create checkpoint directory structure
+#   begin-cohort        Record cohort members after deterministic safety checks
 #   end-iteration       Record iteration end_sha after Generator commits
 #   pass-checkpoint     Verify evaluation PASS, write status.md=PASS, record final_sha
+#   pass-cohort         Mark a cohort PASS after all members are terminal
 #   begin-e2e           Record e2e_baseline_sha, create e2e directory structure
 #   pass-e2e            Verify E2E report PASS, write status.md=PASS, record e2e_final_sha
 #   pass-review-loop    Verify completed review-loop artifacts, advance phase
@@ -201,8 +203,10 @@ Commands:
   status                Show current execution state
   discover              Find approved specs on current branch
   begin-checkpoint      Start a new checkpoint (record baseline SHA)
+  begin-cohort          Start a checkpoint cohort (record members + baseline SHA)
   end-iteration         Record end of a Generator iteration
   pass-checkpoint       Mark checkpoint as PASS (requires evaluator PASS)
+  pass-cohort           Mark a checkpoint cohort as PASS
   begin-e2e             Start E2E verification phase
   pass-e2e              Mark E2E as PASS (requires E2E report PASS)
   pass-review-loop      Verify completed review-loop artifacts, advance phase
@@ -223,6 +227,7 @@ Options:
   --task-id ID          Task identifier (required for most commands)
   --checkpoint NN       Checkpoint number (zero-padded, e.g., 01)
   --iteration N         Iteration number
+  --group GROUP         Cohort group for begin-cohort/pass-cohort
   --base-branch NAME    Base branch for scope-check (default: main)
   --help                Show this help
 EOF
@@ -302,6 +307,28 @@ require_next_arg() {
     echo "Error: ${option} requires a value" >&2
     exit 1
   fi
+}
+
+parse_group_arg() {
+  local group=""
+  local i=0
+  while [[ $i -lt ${#EXTRA_ARGS[@]} ]]; do
+    case "${EXTRA_ARGS[$i]}" in
+      --group)
+        require_next_arg "--group" "$i"
+        group="${EXTRA_ARGS[$((i+1))]}"
+        i=$((i+2))
+        ;;
+      *) echo "Error: Unknown ${COMMAND} option: ${EXTRA_ARGS[$i]}" >&2; exit 1 ;;
+    esac
+  done
+
+  if [[ -z "$group" ]]; then
+    echo "Error: --group is required for this command" >&2
+    exit 1
+  fi
+
+  printf '%s\n' "$group"
 }
 
 cmd_scope_check() {
@@ -746,6 +773,210 @@ ENDOUT
 }
 
 # ============================================================================
+# Command: begin-cohort
+# ============================================================================
+
+cmd_begin_cohort() {
+  require_task_id
+  require_git_state
+  require_phase "init" "checkpoints" "Task has advanced past the checkpoint phase. Start a new task instead of re-running begin-cohort."
+
+  local group
+  group="$(parse_group_arg)"
+
+  local dir spec gs sha tmp members
+  dir="$(harness_dir)"
+  spec="${dir}/spec.md"
+  gs="$(git_state_file)"
+  sha="$(current_sha)"
+  tmp=$(mktemp)
+
+  if [[ ! -f "$spec" ]]; then
+    echo "Error: spec.md not found at ${spec}" >&2
+    rm -f "$tmp"
+    exit 1
+  fi
+
+  if ! members=$(python3 - "$spec" "$gs" "$group" "$sha" "$tmp" <<'PY'
+import json
+import pathlib
+import re
+import sys
+
+spec_path = pathlib.Path(sys.argv[1])
+state_path = pathlib.Path(sys.argv[2])
+group = sys.argv[3]
+baseline_sha = sys.argv[4]
+out_path = pathlib.Path(sys.argv[5])
+
+
+def strip_inline_code(text):
+    return re.sub(r"`[^`]*`", "", text)
+
+
+def canon_path(path):
+    value = path.strip()
+    value = re.sub(r"\s+\(new\)\s*$", "", value)
+    while value.startswith("./"):
+        value = value[2:]
+    return value.strip()
+
+
+def normalize_cp(value):
+    match = re.search(r"CP\s*0*([0-9]+)", value, re.IGNORECASE)
+    if not match:
+        return ""
+    return f"{int(match.group(1)):02d}"
+
+
+def checkpoint_sections(text):
+    sections = {}
+    current = None
+    current_lines = []
+    in_fence = False
+    for line in text.splitlines():
+        if line.strip().startswith("```"):
+            in_fence = not in_fence
+        match = re.match(r"^### Checkpoint ([0-9]{2}):", line)
+        if match and not in_fence:
+            if current:
+                sections[current] = current_lines
+            current = match.group(1)
+            current_lines = [line]
+        elif current:
+            current_lines.append(line)
+    if current:
+        sections[current] = current_lines
+    return sections
+
+
+def parse_section(lines):
+    meta = {"group": "", "depends": set(), "files": set()}
+    in_fence = False
+    in_files = False
+    for raw_line in lines:
+        line = raw_line.rstrip("\n")
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+
+        no_inline = strip_inline_code(line)
+        group_match = re.match(r"^\s*-\s*parallel_group:\s*(\S+)\s*$", no_inline)
+        if group_match:
+            meta["group"] = group_match.group(1).strip()
+            in_files = False
+            continue
+
+        depends_match = re.match(r"^\s*-\s*(?:\*\*)?Depends on(?:\*\*)?:\s*(.*)$", no_inline, re.IGNORECASE)
+        if depends_match:
+            in_files = False
+            dep_text = depends_match.group(1)
+            for dep in re.findall(r"CP\s*0*[0-9]+", dep_text, re.IGNORECASE):
+                cp = normalize_cp(dep)
+                if cp:
+                    meta["depends"].add(cp)
+            continue
+
+        files_match = re.match(r"^\s*-\s*(?:\*\*)?Files of interest(?:\*\*)?:\s*(.*)$", no_inline, re.IGNORECASE)
+        if files_match:
+            in_files = True
+            inline = files_match.group(1).strip()
+            if inline:
+                for part in inline.split(","):
+                    path = canon_path(part)
+                    if path:
+                        meta["files"].add(path)
+            continue
+
+        metadata_match = re.match(r"^\s*-\s*(?:Scope|Depends on|Type|parallel_group|Acceptance criteria|Effort estimate)\b", no_inline, re.IGNORECASE)
+        if metadata_match:
+            in_files = False
+
+        if in_files:
+            item_match = re.match(r"^\s*-\s*(.+)$", no_inline)
+            if item_match:
+                for part in item_match.group(1).split(","):
+                    path = canon_path(part)
+                    if path:
+                        meta["files"].add(path)
+    return meta
+
+
+sections = checkpoint_sections(spec_path.read_text())
+if not sections:
+    print(f"Error: no checkpoints found in {spec_path}", file=sys.stderr)
+    sys.exit(1)
+
+parsed = {cp: parse_section(lines) for cp, lines in sections.items()}
+explicit_members = [cp for cp, meta in parsed.items() if meta["group"] == group]
+if explicit_members:
+    members = sorted(explicit_members)
+else:
+    members = [group] if group in parsed and not parsed[group]["group"] else []
+
+if not members:
+    print(f"Error: cohort {group} has no members in {spec_path}", file=sys.stderr)
+    sys.exit(1)
+
+member_set = set(members)
+for cp in members:
+    for dep in sorted(parsed[cp]["depends"]):
+        if dep in member_set:
+            first, second = sorted([cp, dep])
+            print(
+                f"Error: cohort {group} members CP{first} and CP{second} have Depends on edge; "
+                f"same-group members must be independent ({spec_path})",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+for idx, cp_a in enumerate(members):
+    files_a = parsed[cp_a]["files"]
+    for cp_b in members[idx + 1 :]:
+        overlap = sorted(files_a & parsed[cp_b]["files"])
+        if overlap:
+            print(
+                f"Error: cohort {group} members CP{cp_a} and CP{cp_b} have overlapping "
+                f"Files of interest path {overlap[0]} at {spec_path}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+state = json.loads(state_path.read_text())
+state["phase"] = "checkpoints"
+cohorts = state.setdefault("cohorts", {})
+cohorts[group] = {
+    "members": members,
+    "status": "pending",
+    "baseline_sha": baseline_sha,
+}
+checkpoints = state.setdefault("checkpoints", {})
+for cp in members:
+    checkpoints.setdefault(cp, {})["cohort"] = group
+
+out_path.write_text(json.dumps(state, indent=2) + "\n")
+print(",".join(members))
+PY
+  ); then
+    rm -f "$tmp"
+    exit 1
+  fi
+
+  mv "$tmp" "$gs" || { rm -f "$tmp"; exit 1; }
+
+  cat <<ENDOUT
+BEGIN_COHORT_OK
+TASK_ID=${TASK_ID}
+GROUP=${group}
+MEMBERS=${members}
+BASELINE_SHA=${sha}
+ENDOUT
+}
+
+# ============================================================================
 # Command: end-iteration
 # ============================================================================
 
@@ -971,6 +1202,77 @@ CHECKPOINT=${CHECKPOINT}
 FINAL_SHA=${sha}
 TOTAL_ITERATIONS=${iter_count}
 STATUS_FILE=${cp_dir}/status.md
+ENDOUT
+}
+
+# ============================================================================
+# Command: pass-cohort
+# ============================================================================
+
+cmd_pass_cohort() {
+  require_task_id
+  require_git_state
+  require_phase "checkpoints" "Run: \$ENGINE begin-cohort --task-id ${TASK_ID} --group <group> before pass-cohort"
+
+  local group
+  group="$(parse_group_arg)"
+
+  local gs tmp status
+  gs="$(git_state_file)"
+  tmp=$(mktemp)
+
+  if ! status=$(python3 - "$gs" "$group" "$tmp" <<'PY'
+import json
+import pathlib
+import sys
+
+state_path = pathlib.Path(sys.argv[1])
+group = sys.argv[2]
+out_path = pathlib.Path(sys.argv[3])
+
+state = json.loads(state_path.read_text())
+cohort = state.get("cohorts", {}).get(group)
+if not cohort:
+    print(f"Error: cohort {group} not found in {state_path}", file=sys.stderr)
+    sys.exit(1)
+
+members = cohort.get("members") or []
+if not members:
+    print(f"Error: cohort {group} has no recorded members", file=sys.stderr)
+    sys.exit(1)
+
+checkpoints = state.get("checkpoints", {})
+escalated = False
+for cp_id in members:
+    cp = checkpoints.get(cp_id, {})
+    cp_status = str(cp.get("status", "")).lower()
+    if cp_status == "escalated":
+        escalated = True
+        continue
+    if cp_status == "passed" or cp.get("final_sha"):
+        continue
+    print(
+        f"Error: cohort {group} member CP{cp_id} is not passed or escalated",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+cohort["status"] = "partial-pass" if escalated else "passed"
+out_path.write_text(json.dumps(state, indent=2) + "\n")
+print(cohort["status"])
+PY
+  ); then
+    rm -f "$tmp"
+    exit 1
+  fi
+
+  mv "$tmp" "$gs" || { rm -f "$tmp"; exit 1; }
+
+  cat <<ENDOUT
+PASS_COHORT_OK
+TASK_ID=${TASK_ID}
+GROUP=${group}
+STATUS=${status}
 ENDOUT
 }
 
@@ -2389,8 +2691,10 @@ case "$COMMAND" in
   status)               cmd_status ;;
   discover)             cmd_discover ;;
   begin-checkpoint)     cmd_begin_checkpoint ;;
+  begin-cohort)         cmd_begin_cohort ;;
   end-iteration)        cmd_end_iteration ;;
   pass-checkpoint)      cmd_pass_checkpoint ;;
+  pass-cohort)          cmd_pass_cohort ;;
   begin-e2e)            cmd_begin_e2e ;;
   pass-e2e)             cmd_pass_e2e ;;
   pass-review-loop)     cmd_pass_review_loop ;;
