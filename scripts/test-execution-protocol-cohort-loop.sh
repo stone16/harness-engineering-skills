@@ -20,7 +20,9 @@ assert_contains "$execution_protocol" "#### Cohort Execution Loop"
 assert_contains "$execution_protocol" "\$ENGINE begin-cohort --task-id <id> --group <letter>"
 assert_contains "$execution_protocol" "parallel dispatch of Generators in a single Agent-tool batch in Claude Code"
 assert_contains "$execution_protocol" '`&`-backgrounded `claude-agent-invoke.sh` calls in Codex'
-assert_contains "$execution_protocol" 'per-Generator timeout reusing the GNU-`timeout` precedent at `claude-agent-invoke.sh:88-104`'
+assert_contains "$execution_protocol" 'the GNU-`timeout` precedent at `claude-agent-invoke.sh:88-104`'
+assert_contains "$execution_protocol" '$ENGINE with-commit-lock --task-id <id> -- <command>'
+assert_contains "$execution_protocol" 'If a member'\''s `end-iteration` emits `DRIFT_DETECTED`, forward'
 assert_contains "$execution_protocol" "parallel Evaluators after all Generators finish"
 assert_contains "$execution_protocol" 'all PASS → `$ENGINE pass-cohort --task-id <id> --group <letter>`'
 

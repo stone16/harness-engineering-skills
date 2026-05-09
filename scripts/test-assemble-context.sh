@@ -183,4 +183,62 @@ SPEC
 
 assert_context_type "$fenced_type_task" "backend"
 
+cohort_task="assemble-context-cohort-$$"
+new_task "$cohort_task"
+cat > "$repo_root/.harness/$cohort_task/spec.md" <<'SPEC'
+---
+task_id: assemble-context-cohort
+title: cohort context fixture
+version: 1
+status: approved
+branch: test
+---
+
+## Checkpoints
+
+### Checkpoint 01: first
+
+- Scope: first
+- Depends on: none
+- Type: infrastructure
+- parallel_group: A
+- Acceptance criteria:
+  - [ ] first
+- Files of interest:
+  - a.txt
+- Effort estimate: S
+
+### Checkpoint 02: second
+
+- Scope: second
+- Depends on: none
+- Type: infrastructure
+- parallel_group: A
+- Acceptance criteria:
+  - [ ] second
+- Files of interest:
+  - b.txt
+  - ./c.txt
+- Effort estimate: S
+SPEC
+python3 - "$repo_root/.harness/$cohort_task/git-state.json" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+state = json.loads(path.read_text())
+state["checkpoints"] = {
+    "01": {"baseline_sha": "test", "cohort": "A", "iterations": {}},
+    "02": {"baseline_sha": "test", "cohort": "A", "iterations": {}},
+}
+state["cohorts"] = {"A": {"members": ["01", "02"], "status": "pending", "baseline_sha": "test"}}
+path.write_text(json.dumps(state, indent=2) + "\n")
+PY
+"$engine" assemble-context --task-id "$cohort_task" --checkpoint 01 >/dev/null
+grep -q "## Peer Cohort Restrictions" "$repo_root/.harness/$cohort_task/checkpoints/01/context.md"
+grep -q "CP02" "$repo_root/.harness/$cohort_task/checkpoints/01/context.md"
+grep -q "b.txt" "$repo_root/.harness/$cohort_task/checkpoints/01/context.md"
+grep -q "c.txt" "$repo_root/.harness/$cohort_task/checkpoints/01/context.md"
+
 echo "assemble-context parser tests passed"

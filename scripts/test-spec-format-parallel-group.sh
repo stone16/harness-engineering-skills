@@ -20,7 +20,7 @@ assert_contains "$protocol_ref" "a single uppercase letter (A-Z); checkpoints sh
 assert_contains "$protocol_ref" "Absence of the field means the checkpoint forms its own single-member cohort (today's serial behavior). No explicit serial sentinel form is recognized."
 assert_contains "$protocol_ref" '"cohort": "<letter>"'
 assert_contains "$protocol_ref" '"cohorts": {'
-assert_contains "$protocol_ref" '"status": "pending | running | passed | partial-pass | aborted"'
+assert_contains "$protocol_ref" '"status": "pending | passed | partial-pass"'
 assert_contains "$protocol_ref" "BEGIN_COHORT_OK"
 assert_contains "$protocol_ref" "PASS_COHORT_OK"
 

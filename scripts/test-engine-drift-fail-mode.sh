@@ -64,24 +64,24 @@ branch: main
 - Scope: first
 - Depends on: none
 - Type: infrastructure
-- parallel_group: A
+- **parallel_group**: A
 - Acceptance criteria:
   - [ ] first
 - Files of interest:
   - a.txt
-- Effort estimate: S
+- **Effort estimate**: S
 
 ### Checkpoint 02: second
 
 - Scope: second
 - Depends on: none
 - Type: infrastructure
-- parallel_group: A
+- **parallel_group**: A
 - Acceptance criteria:
   - [ ] second
 - Files of interest:
   - b.txt
-- Effort estimate: S
+- **Effort estimate**: S
 SPEC
 }
 
@@ -135,11 +135,16 @@ assert_cohort_peer_file_fails_iteration() {
     "$engine" begin-checkpoint --task-id "$task" --checkpoint 01 > begin-01.out
     "$engine" begin-checkpoint --task-id "$task" --checkpoint 02 > begin-02.out
 
-    echo drift > b.txt
-    git add b.txt
-    git commit -q -m "cp01 touches peer file"
     set +e
-    "$engine" end-iteration --task-id "$task" --checkpoint 01 > drift.out 2> drift.err
+    "$engine" with-commit-lock --task-id "$task" -- bash -c '
+      echo drift > b.txt
+      git add b.txt
+      git commit -q -m "cp01 touches peer file"
+      echo own > a.txt
+      git add a.txt
+      git commit -q -m "cp01 touches own file after drift"
+      "$0" end-iteration --task-id "$1" --checkpoint 01
+    ' "$engine" "$task" > drift.out 2> drift.err
     status=$?
     set -e
     [[ "$status" -ne 0 ]] || {
@@ -154,10 +159,22 @@ assert_cohort_peer_file_fails_iteration() {
     assert_contains "$event" "offending_checkpoint: 01"
     assert_contains "$event" "peer_checkpoint: 02"
 
-    echo peer-owned > b.txt
-    git add b.txt
-    git commit -q -m "cp02 touches own file"
-    "$engine" end-iteration --task-id "$task" --checkpoint 02 > peer.out
+    mkdir -p ".harness/$task/checkpoints/01/iter-1/evidence"
+    echo "summary" > ".harness/$task/checkpoints/01/iter-1/output-summary.md"
+    printf -- "---\nverdict: PASS\n---\n" > ".harness/$task/checkpoints/01/iter-1/evaluation.md"
+    printf '%s\n' "11111111-1111-4111-8111-111111111111" > ".harness/$task/checkpoints/01/iter-1/evaluator-session-id.txt"
+    if "$engine" pass-checkpoint --task-id "$task" --checkpoint 01 > pass-drift.out 2> pass-drift.err; then
+      echo "pass-checkpoint accepted an unresolved drift event" >&2
+      exit 1
+    fi
+    assert_contains pass-drift.err "unresolved cohort drift"
+
+    "$engine" with-commit-lock --task-id "$task" -- bash -c '
+      echo peer-owned > b.txt
+      git add b.txt
+      git commit -q -m "cp02 touches own file"
+      "$0" end-iteration --task-id "$1" --checkpoint 02
+    ' "$engine" "$task" > peer.out
     assert_contains peer.out "END_ITERATION_OK"
     assert_not_contains peer.out "DRIFT_DETECTED"
   )

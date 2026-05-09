@@ -149,8 +149,13 @@ One match → load. Multiple → ask user. None → inform user.
    b. Start parallel dispatch of Generators in a single Agent-tool batch in Claude Code,
       or as `&`-backgrounded `claude-agent-invoke.sh` calls in Codex.
       Each Generator receives only its checkpoint context, writes its
-      own atomic commits and `output-summary.md`, and uses a per-Generator timeout reusing the GNU-`timeout` precedent at `claude-agent-invoke.sh:88-104`
-      with the same fallback shape.
+      own `output-summary.md`, and uses a per-Generator timeout reusing
+      the GNU-`timeout` precedent at `claude-agent-invoke.sh:88-104`
+      with the same fallback shape. The Generator's `git commit` and
+      `$ENGINE end-iteration --task-id <id> --checkpoint <NN>` call MUST run
+      inside one `$ENGINE with-commit-lock --task-id <id> -- <command>`
+      invocation so the drift detector attributes the locked commit range to
+      the correct cohort member.
    c. After all Generators finish, run parallel Evaluators after all Generators finish;
       each Evaluator receives only its member checkpoint
       spec, member diff, member `output-summary.md`, and
@@ -160,6 +165,10 @@ One match → load. Multiple → ask user. None → inform user.
       per-checkpoint loop for that member. If one or more members exhaust
       `max_eval_rounds` while peers in the same cohort reached PASS, escalate
       via the cohort partial-PASS pause scenario above.
+      If a member's `end-iteration` emits `DRIFT_DETECTED`, forward
+      `OFFENDING_PATH=...` and `PEER_CHECKPOINT=...` as FAIL feedback to that
+      member only; do not abort peers that already completed their own locked
+      commit range.
 
 4. E2E verification (proceed automatically after last checkpoint passes):
    → $ENGINE begin-e2e --task-id <id>

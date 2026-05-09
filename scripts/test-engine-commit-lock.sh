@@ -39,6 +39,25 @@ setup_repo() {
     git push -q -u origin main
     mkdir -p ".harness/$task"
     printf '{"commit_lock_timeout_seconds": %s}\n' "$timeout" > .harness/config.json
+    baseline="$(git rev-parse HEAD)"
+    cat > ".harness/$task/git-state.json" <<JSON
+{
+  "task_id": "$task",
+  "task_start_sha": "$baseline",
+  "phase": "checkpoints",
+  "checkpoints": {},
+  "e2e_baseline_sha": "",
+  "e2e_final_sha": "",
+  "review_loop_status": "",
+  "review_loop_session_id": "",
+  "review_loop_summary_file": "",
+  "review_loop_rounds_file": "",
+  "full_verify_baseline_sha": "",
+  "full_verify_final_sha": "",
+  "full_verify_status": "",
+  "pr_url": ""
+}
+JSON
   )
 }
 
@@ -133,9 +152,25 @@ assert_timeout_exhaustion() {
   )
 }
 
+assert_public_with_commit_lock_command() {
+  local task="commit-lock-public"
+  local repo="$tmpdir/public"
+  setup_repo "$repo" "$task" 5
+  (
+    cd "$repo"
+    "$engine" with-commit-lock --task-id "$task" -- bash -c 'echo public-lock-ran > public.out'
+    assert_contains public.out "public-lock-ran"
+    [[ -f ".harness/$task/.commit.lock" ]] || {
+      echo "with-commit-lock did not create the public lock file" >&2
+      exit 1
+    }
+  )
+}
+
 assert_read_config_emits_timeout
 assert_sequential_lock_acquire_release
 assert_concurrent_git_commits_serialize
 assert_timeout_exhaustion
+assert_public_with_commit_lock_command
 
 echo "engine commit lock test passed"

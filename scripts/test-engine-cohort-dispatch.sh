@@ -174,6 +174,46 @@ branch: main
 SPEC
 }
 
+write_spec_bold_cohort_metadata() {
+  local repo="$1"
+  local task="$2"
+  cat > "$repo/.harness/$task/spec.md" <<'SPEC'
+---
+task_id: cohort-bold
+title: cohort bold metadata fixture
+version: 1
+status: approved
+branch: main
+---
+
+## Checkpoints
+
+### Checkpoint 01: first
+
+- Scope: first
+- Depends on: none
+- Type: infrastructure
+- **parallel_group**: A
+- Acceptance criteria:
+  - [ ] first
+- Files of interest:
+  - a.sh
+- **Effort estimate**: S
+
+### Checkpoint 02: second
+
+- Scope: second
+- Depends on: none
+- Type: infrastructure
+- **parallel_group**: A
+- Acceptance criteria:
+  - [ ] second
+- Files of interest:
+  - b.sh
+- **Effort estimate**: S
+SPEC
+}
+
 write_spec_serial() {
   local repo="$1"
   local task="$2"
@@ -278,6 +318,8 @@ assert_cohort_accepted_disjoint() {
   write_spec_disjoint "$repo" "$task"
   (
     cd "$repo"
+    "$engine" validate-transition --task-id "$task" begin-cohort >validate-begin.out
+    assert_contains validate-begin.out "TRANSITION_OK"
     "$engine" begin-cohort --task-id "$task" --group A >begin.out
     assert_contains begin.out "BEGIN_COHORT_OK"
     assert_contains begin.out "GROUP=A"
@@ -321,6 +363,27 @@ PY
   )
 }
 
+assert_cohort_accepts_bold_metadata_without_file_leak() {
+  local task="cohort-bold"
+  local repo="$tmpdir/bold"
+  setup_repo "$repo" "$task"
+  write_spec_bold_cohort_metadata "$repo" "$task"
+  (
+    cd "$repo"
+    "$engine" begin-cohort --task-id "$task" --group A >begin.out
+    assert_contains begin.out "BEGIN_COHORT_OK"
+    python3 - "$task" <<'PY'
+import json
+import pathlib
+import sys
+
+task = sys.argv[1]
+state = json.loads(pathlib.Path(f".harness/{task}/git-state.json").read_text())
+assert state["cohorts"]["A"]["members"] == ["01", "02"], state
+PY
+  )
+}
+
 assert_serial_spec_uses_single_member_cohorts() {
   local task="cohort-serial"
   local repo="$tmpdir/serial"
@@ -350,6 +413,7 @@ PY
 assert_cohort_rejected_with_cycle
 assert_cohort_rejected_with_overlap
 assert_cohort_accepted_disjoint
+assert_cohort_accepts_bold_metadata_without_file_leak
 assert_serial_spec_uses_single_member_cohorts
 
 echo "engine cohort dispatch test passed"

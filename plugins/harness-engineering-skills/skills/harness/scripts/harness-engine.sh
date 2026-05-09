@@ -18,6 +18,7 @@ set -uo pipefail
 #   discover            Scan .harness/ for approved specs on current branch
 #   begin-checkpoint    Record baseline_sha, create checkpoint directory structure
 #   begin-cohort        Record cohort members after deterministic safety checks
+#   with-commit-lock    Run a command under the per-task commit lock
 #   end-iteration       Record iteration end_sha after Generator commits
 #   pass-checkpoint     Verify evaluation PASS, write status.md=PASS, record final_sha
 #   pass-cohort         Mark a cohort PASS after all members are terminal
@@ -187,6 +188,14 @@ parse_args() {
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
+      --)
+        EXTRA_ARGS+=("$1")
+        shift
+        while [[ $# -gt 0 ]]; do
+          EXTRA_ARGS+=("$1")
+          shift
+        done
+        ;;
       --task-id)     TASK_ID="$2"; shift 2 ;;
       --checkpoint)  CHECKPOINT="$2"; shift 2 ;;
       --iteration)   ITERATION="$2"; shift 2 ;;
@@ -207,6 +216,7 @@ Commands:
   discover              Find approved specs on current branch
   begin-checkpoint      Start a new checkpoint (record baseline SHA)
   begin-cohort          Start a checkpoint cohort (record members + baseline SHA)
+  with-commit-lock      Run a command under the per-task commit lock
   end-iteration         Record end of a Generator iteration
   pass-checkpoint       Mark checkpoint as PASS (requires evaluator PASS)
   pass-cohort           Mark a checkpoint cohort as PASS
@@ -361,6 +371,10 @@ acquire_commit_lock() {
     echo "Error: acquire_commit_lock requires a callback command" >&2
     return 1
   fi
+  if [[ -n "${HARNESS_COMMIT_LOCK_HELD:-}" && "${HARNESS_COMMIT_LOCK_HELD}" == "$task_id" ]]; then
+    "$@"
+    return $?
+  fi
 
   local timeout lock_dir lock_path
   timeout="$(commit_lock_timeout_seconds)"
@@ -372,7 +386,7 @@ acquire_commit_lock() {
   if command -v flock >/dev/null 2>&1; then
     (
       flock -x -w "$timeout" 9 || return 1
-      "$@"
+      HARNESS_COMMIT_LOCK_HELD="$task_id" "$@"
     ) 9>"$lock_path"
     return $?
   fi
@@ -391,10 +405,47 @@ acquire_commit_lock() {
     sleep 1
   done
 
-  "$@"
+  HARNESS_COMMIT_LOCK_HELD="$task_id" "$@"
   local status=$?
   rmdir "$fallback_dir" 2>/dev/null || true
   return "$status"
+}
+
+with_commit_lock_callback() {
+  local start_sha
+  start_sha="$(current_sha)"
+  HARNESS_COMMIT_LOCK_START_SHA="$start_sha" "$@"
+}
+
+# ============================================================================
+# Command: with-commit-lock
+# ============================================================================
+
+cmd_with_commit_lock() {
+  require_task_id
+  require_git_state
+
+  local command_args=()
+  local seen_separator="false"
+  for arg in "${EXTRA_ARGS[@]}"; do
+    if [[ "$seen_separator" == "false" ]]; then
+      if [[ "$arg" == "--" ]]; then
+        seen_separator="true"
+      else
+        echo "Error: with-commit-lock expects '--' before the command" >&2
+        exit 1
+      fi
+    else
+      command_args+=("$arg")
+    fi
+  done
+
+  if [[ "${#command_args[@]}" -eq 0 ]]; then
+    echo "Error: with-commit-lock requires a command after '--'" >&2
+    exit 1
+  fi
+
+  acquire_commit_lock "$TASK_ID" with_commit_lock_callback "${command_args[@]}"
 }
 
 cmd_scope_check() {
@@ -957,7 +1008,7 @@ def parse_section(lines):
             continue
 
         no_inline = strip_inline_code(line)
-        group_match = re.match(r"^\s*-\s*parallel_group:\s*(\S+)\s*$", no_inline)
+        group_match = re.match(r"^\s*-\s*(?:\*\*)?parallel_group(?:\*\*)?:\s*(\S+)\s*$", no_inline)
         if group_match:
             meta["group"] = group_match.group(1).strip()
             in_files = False
@@ -984,7 +1035,7 @@ def parse_section(lines):
                         meta["files"].add(path)
             continue
 
-        metadata_match = re.match(r"^\s*-\s*(?:Scope|Depends on|Type|parallel_group|Acceptance criteria|Effort estimate)\b", no_inline, re.IGNORECASE)
+        metadata_match = re.match(r"^\s*-\s*(?:\*\*)?(?:Scope|Depends on|Type|parallel_group|Acceptance criteria|Effort estimate)(?:\*\*)?\b", no_inline, re.IGNORECASE)
         if metadata_match:
             in_files = False
 
@@ -1087,20 +1138,18 @@ ENDOUT
 detect_drift_shadow() {
   local checkpoint="$1"
   local iteration="$2"
-  local gs spec cohort baseline
+  local range_start="$3"
+  local range_end="$4"
+  local gs spec cohort
   gs="$(git_state_file)"
   spec="$(harness_dir)/spec.md"
   cohort=$(json_get_nested "$gs" "checkpoints.${checkpoint}.cohort")
   [[ -z "$cohort" ]] && return 0
-  baseline=$(json_get_nested "$gs" "checkpoints.${checkpoint}.baseline_sha")
-  [[ -z "$baseline" ]] && return 0
+  [[ -z "$range_start" || -z "$range_end" ]] && return 0
   [[ -f "$spec" ]] || return 0
 
-  # end-iteration is the post-commit boundary; inspect HEAD so peer cohort
-  # commits already on the branch are not attributed to this checkpoint.
   local changed
-  changed=$(git diff-tree --no-commit-id --name-only -r HEAD 2>/dev/null || true)
-  [[ -z "$changed" ]] && changed=$(git diff --name-only "${baseline}..HEAD" 2>/dev/null || true)
+  changed=$(git diff --name-only "${range_start}..${range_end}" 2>/dev/null || true)
   [[ -z "$changed" ]] && return 0
 
   local iter_dir
@@ -1179,7 +1228,7 @@ def files_of_interest(lines):
                     if path:
                         files.add(path)
             continue
-        metadata_match = re.match(r"^\s*-\s*(?:Scope|Depends on|Type|parallel_group|Acceptance criteria|Effort estimate)\b", no_inline, re.IGNORECASE)
+        metadata_match = re.match(r"^\s*-\s*(?:\*\*)?(?:Scope|Depends on|Type|parallel_group|Acceptance criteria|Effort estimate)(?:\*\*)?\b", no_inline, re.IGNORECASE)
         if metadata_match:
             in_files = False
         if in_files:
@@ -1238,9 +1287,17 @@ record_iteration_and_detect_drift() {
   local checkpoint="$2"
   local iteration="$3"
   local sha="$4"
+  local range_start="${HARNESS_COMMIT_LOCK_START_SHA:-}"
+  if [[ -z "$range_start" ]]; then
+    if [[ "$iteration" -gt 1 ]]; then
+      local previous_iteration=$((iteration - 1))
+      range_start=$(json_get_nested "$gs" "checkpoints.${checkpoint}.iterations.${previous_iteration}.end_sha")
+    fi
+    [[ -z "$range_start" ]] && range_start=$(json_get_nested "$gs" "checkpoints.${checkpoint}.baseline_sha")
+  fi
 
   json_add_iteration "$gs" "$checkpoint" "$iteration" "$sha" || return 1
-  detect_drift_shadow "$checkpoint" "$iteration"
+  detect_drift_shadow "$checkpoint" "$iteration" "$range_start" "$sha"
 }
 
 # ============================================================================
@@ -1375,6 +1432,15 @@ print(max((int(k) for k in iters.keys()), default=0))
     echo "PHASE_BLOCKED" >&2
     echo "REASON=${last_eval} verdict is ${eval_verdict}; checkpoint pass requires PASS" >&2
     echo "NEXT_STEP=Send evaluation feedback to the Generator, fix, end a new iteration, and re-evaluate" >&2
+    exit 1
+  fi
+
+  local drift_event
+  drift_event=$(find "$cp_dir" -path "${cp_dir}/iter-*/drift-event.md" -type f 2>/dev/null | sort | head -1)
+  if [[ -n "$drift_event" ]]; then
+    echo "PHASE_BLOCKED" >&2
+    echo "REASON=${drift_event} exists; checkpoint ${CHECKPOINT} has unresolved cohort drift" >&2
+    echo "NEXT_STEP=Retry checkpoint ${CHECKPOINT} without touching peer cohort files; remove stale drift artifacts only after a clean retry" >&2
     exit 1
   fi
 
@@ -1774,7 +1840,6 @@ print(data.get('session', {}).get('id', ''))
     exit 1
   fi
 
-  local gs
   gs="$(git_state_file)"
   json_set "$gs" "phase" "review-loop"
   json_set "$gs" "review_loop_status" "COMPLETE"
@@ -2517,6 +2582,117 @@ for header in ['## Constraints', '## Technical Approach']:
         break
 " "$spec")
 
+  local cohort_restrictions
+  cohort_restrictions=$(python3 - "$spec" "$gs" "$CHECKPOINT" <<'PY'
+import json
+import pathlib
+import re
+import sys
+
+spec_path = pathlib.Path(sys.argv[1])
+state_path = pathlib.Path(sys.argv[2])
+checkpoint = sys.argv[3]
+
+
+def strip_inline_code(text):
+    return re.sub(r"`[^`]*`", "", text)
+
+
+def canon_path(path):
+    value = path.strip()
+    value = re.sub(r"\s+\(new\)\s*$", "", value)
+    while value.startswith("./"):
+        value = value[2:]
+    return value.strip()
+
+
+def checkpoint_sections(text):
+    sections = {}
+    current = None
+    current_lines = []
+    in_fence = False
+    for line in text.splitlines():
+        if line.strip().startswith("```"):
+            in_fence = not in_fence
+        match = re.match(r"^### Checkpoint ([0-9]{2}):", line)
+        if match and not in_fence:
+            if current:
+                sections[current] = current_lines
+            current = match.group(1)
+            current_lines = [line]
+        elif current:
+            current_lines.append(line)
+    if current:
+        sections[current] = current_lines
+    return sections
+
+
+def files_of_interest(lines):
+    files = []
+    seen = set()
+    in_fence = False
+    in_files = False
+    for raw_line in lines:
+        line = raw_line.rstrip("\n")
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        no_inline = strip_inline_code(line)
+        files_match = re.match(r"^\s*-\s*(?:\*\*)?Files of interest(?:\*\*)?:\s*(.*)$", no_inline, re.IGNORECASE)
+        if files_match:
+            in_files = True
+            inline = files_match.group(1).strip()
+            if inline:
+                for part in inline.split(","):
+                    path = canon_path(part)
+                    if path and path not in seen:
+                        files.append(path)
+                        seen.add(path)
+            continue
+        metadata_match = re.match(r"^\s*-\s*(?:\*\*)?(?:Scope|Depends on|Type|parallel_group|Acceptance criteria|Effort estimate)(?:\*\*)?\b", no_inline, re.IGNORECASE)
+        if metadata_match:
+            in_files = False
+        if in_files:
+            item_match = re.match(r"^\s*-\s*(.+)$", no_inline)
+            if item_match:
+                for part in item_match.group(1).split(","):
+                    path = canon_path(part)
+                    if path and path not in seen:
+                        files.append(path)
+                        seen.add(path)
+    return files
+
+
+state = json.loads(state_path.read_text())
+cp = state.get("checkpoints", {}).get(checkpoint, {})
+cohort = cp.get("cohort", "")
+if not cohort:
+    sys.exit(0)
+
+members = state.get("cohorts", {}).get(cohort, {}).get("members", [])
+peers = [member for member in members if member != checkpoint]
+if not peers:
+    sys.exit(0)
+
+sections = checkpoint_sections(spec_path.read_text())
+print("## Peer Cohort Restrictions")
+print("")
+print(f"Checkpoint {checkpoint} is in cohort `{cohort}`. Do not touch peer cohort files; end-iteration reports `DRIFT_DETECTED` if this checkpoint changes a peer-owned path.")
+print("")
+for peer in peers:
+    files = files_of_interest(sections.get(peer, []))
+    print(f"- CP{peer}:")
+    if files:
+        for path in files:
+            print(f"  - {path}")
+    else:
+        print("  - (no Files of interest declared)")
+PY
+)
+
   # Write context.md
   local cp_dir
   cp_dir="$dir/checkpoints/${CHECKPOINT}"
@@ -2555,6 +2731,8 @@ ${prior_progress:-No prior checkpoints completed.}
 ## Constraints
 
 ${constraints:-No explicit constraints in spec.}
+
+${cohort_restrictions}
 
 ## Files of Interest
 
@@ -2835,6 +3013,13 @@ print(count)
         reason="Cannot begin checkpoint from state: ${current_state}. Must complete current checkpoint first."
       fi
       ;;
+    begin-cohort)
+      if [[ "$current_state" == "init" || "$current_state" == "between-checkpoints" || "$current_state" == "all-checkpoints-passed" ]]; then
+        valid="true"
+      else
+        reason="Cannot begin cohort from state: ${current_state}. Must complete current checkpoint or cohort member first."
+      fi
+      ;;
     end-iteration)
       if [[ "$current_state" == "post-begin-checkpoint" || "$current_state" == "post-iteration" ]]; then
         valid="true"
@@ -2847,6 +3032,13 @@ print(count)
         valid="true"
       else
         reason="Cannot pass checkpoint from state: ${current_state}. Must have at least one iteration."
+      fi
+      ;;
+    pass-cohort)
+      if [[ "$phase" == "checkpoints" ]]; then
+        valid="true"
+      else
+        reason="Cannot pass cohort from phase: ${phase}. Must be in checkpoints phase."
       fi
       ;;
     begin-e2e)
@@ -2962,6 +3154,7 @@ case "$COMMAND" in
   discover)             cmd_discover ;;
   begin-checkpoint)     cmd_begin_checkpoint ;;
   begin-cohort)         cmd_begin_cohort ;;
+  with-commit-lock)     cmd_with_commit_lock ;;
   end-iteration)        cmd_end_iteration ;;
   pass-checkpoint)      cmd_pass_checkpoint ;;
   pass-cohort)          cmd_pass_cohort ;;

@@ -113,16 +113,20 @@ assert_full_cohort_lifecycle() {
     "$engine" begin-checkpoint --task-id "$task" --checkpoint 01 > begin-01.out
     "$engine" begin-checkpoint --task-id "$task" --checkpoint 02 > begin-02.out
 
-    echo generator-01 > a.txt
-    git add a.txt
-    git commit -q -m "generator cp01"
-    "$engine" end-iteration --task-id "$task" --checkpoint 01 > end-01.out
+    "$engine" with-commit-lock --task-id "$task" -- bash -c '
+      echo generator-01 > a.txt
+      git add a.txt
+      git commit -q -m "generator cp01"
+      "$0" end-iteration --task-id "$1" --checkpoint 01
+    ' "$engine" "$task" > end-01.out
     assert_contains end-01.out "END_ITERATION_OK"
 
-    echo generator-02 > b.txt
-    git add b.txt
-    git commit -q -m "generator cp02"
-    "$engine" end-iteration --task-id "$task" --checkpoint 02 > end-02.out
+    "$engine" with-commit-lock --task-id "$task" -- bash -c '
+      echo generator-02 > b.txt
+      git add b.txt
+      git commit -q -m "generator cp02"
+      "$0" end-iteration --task-id "$1" --checkpoint 02
+    ' "$engine" "$task" > end-02.out
     assert_contains end-02.out "END_ITERATION_OK"
     [[ -f ".harness/$task/.commit.lock" ]] || {
       echo "expected end-iteration to acquire the commit lock" >&2
