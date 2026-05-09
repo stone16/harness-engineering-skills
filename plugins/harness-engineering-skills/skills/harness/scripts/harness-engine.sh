@@ -161,6 +161,8 @@ DEFAULT_COVERAGE_THRESHOLD=85
 DEFAULT_SKIP_FULL_VERIFY="false"
 DEFAULT_AUTONOMOUS_PR="true"
 DEFAULT_COMMIT_LOCK_TIMEOUT_SECONDS=120
+DEFAULT_ENABLE_PARALLEL_COHORTS="true"
+DEFAULT_MAX_PARALLEL_COHORT_SIZE=4
 
 # Global options
 TASK_ID=""
@@ -499,6 +501,8 @@ cmd_read_config() {
   local skip_full_verify="$DEFAULT_SKIP_FULL_VERIFY"
   local autonomous_pr="$DEFAULT_AUTONOMOUS_PR"
   local commit_lock_timeout_seconds="$DEFAULT_COMMIT_LOCK_TIMEOUT_SECONDS"
+  local enable_parallel_cohorts="$DEFAULT_ENABLE_PARALLEL_COHORTS"
+  local max_parallel_cohort_size="$DEFAULT_MAX_PARALLEL_COHORT_SIZE"
 
   # Layer 2: .harness/config.json
   local config_file=".harness/config.json"
@@ -515,13 +519,16 @@ cmd_read_config() {
     val=$(json_get "$config_file" "skip_full_verify") && [[ -n "$val" ]] && skip_full_verify=$(echo "$val" | tr '[:upper:]' '[:lower:]')
     val=$(json_get "$config_file" "autonomous_pr") && [[ -n "$val" ]] && autonomous_pr=$(echo "$val" | tr '[:upper:]' '[:lower:]')
     val=$(json_get "$config_file" "commit_lock_timeout_seconds") && [[ -n "$val" ]] && commit_lock_timeout_seconds="$val"
+    val=$(json_get "$config_file" "enable_parallel_cohorts") && [[ -n "$val" ]] && enable_parallel_cohorts=$(echo "$val" | tr '[:upper:]' '[:lower:]')
+    val=$(json_get "$config_file" "max_parallel_cohort_size") && [[ -n "$val" ]] && max_parallel_cohort_size="$val"
   fi
 
   # Layer 3: CLI args (via EXTRA_ARGS)
   # Schema fields: max_spec_rounds, max_eval_rounds, cross_model_review,
   # cross_model_peer, auto_retro, claude_md_path, max_verify_rounds,
   # coverage_threshold, skip_full_verify, autonomous_pr,
-  # commit_lock_timeout_seconds.
+  # commit_lock_timeout_seconds, enable_parallel_cohorts,
+  # max_parallel_cohort_size.
   local i=0
   while [[ $i -lt ${#EXTRA_ARGS[@]} ]]; do
     case "${EXTRA_ARGS[$i]}" in
@@ -536,6 +543,8 @@ cmd_read_config() {
       --skip-full-verify) skip_full_verify="${EXTRA_ARGS[$((i+1))]}"; i=$((i+2)) ;;
       --autonomous-pr) autonomous_pr="$(echo "${EXTRA_ARGS[$((i+1))]}" | tr '[:upper:]' '[:lower:]')"; i=$((i+2)) ;;
       --commit-lock-timeout-seconds) commit_lock_timeout_seconds="${EXTRA_ARGS[$((i+1))]}"; i=$((i+2)) ;;
+      --enable-parallel-cohorts) enable_parallel_cohorts="$(echo "${EXTRA_ARGS[$((i+1))]}" | tr '[:upper:]' '[:lower:]')"; i=$((i+2)) ;;
+      --max-parallel-cohort-size) max_parallel_cohort_size="${EXTRA_ARGS[$((i+1))]}"; i=$((i+2)) ;;
       *) echo "Error: Unknown config option: ${EXTRA_ARGS[$i]}" >&2; exit 1 ;;
     esac
   done
@@ -553,6 +562,8 @@ COVERAGE_THRESHOLD=${coverage_threshold}
 SKIP_FULL_VERIFY=${skip_full_verify}
 AUTONOMOUS_PR=${autonomous_pr}
 COMMIT_LOCK_TIMEOUT_SECONDS=${commit_lock_timeout_seconds}
+ENABLE_PARALLEL_COHORTS=${enable_parallel_cohorts}
+MAX_PARALLEL_COHORT_SIZE=${max_parallel_cohort_size}
 ENDCONFIG
 }
 
@@ -860,13 +871,24 @@ cmd_begin_cohort() {
   sha="$(current_sha)"
   tmp=$(mktemp)
 
+  local enable_parallel_cohorts="$DEFAULT_ENABLE_PARALLEL_COHORTS"
+  local max_parallel_cohort_size="$DEFAULT_MAX_PARALLEL_COHORT_SIZE"
+  local config_file=".harness/config.json"
+  if [[ -f "$config_file" ]]; then
+    local val
+    val=$(json_get "$config_file" "enable_parallel_cohorts")
+    [[ -n "$val" ]] && enable_parallel_cohorts=$(echo "$val" | tr '[:upper:]' '[:lower:]')
+    val=$(json_get "$config_file" "max_parallel_cohort_size")
+    [[ -n "$val" ]] && max_parallel_cohort_size="$val"
+  fi
+
   if [[ ! -f "$spec" ]]; then
     echo "Error: spec.md not found at ${spec}" >&2
     rm -f "$tmp"
     exit 1
   fi
 
-  if ! members=$(python3 - "$spec" "$gs" "$group" "$sha" "$tmp" <<'PY'
+  if ! members=$(python3 - "$spec" "$gs" "$group" "$sha" "$tmp" "$enable_parallel_cohorts" "$max_parallel_cohort_size" <<'PY'
 import json
 import pathlib
 import re
@@ -877,6 +899,8 @@ state_path = pathlib.Path(sys.argv[2])
 group = sys.argv[3]
 baseline_sha = sys.argv[4]
 out_path = pathlib.Path(sys.argv[5])
+enable_parallel_cohorts = sys.argv[6].lower()
+max_parallel_cohort_size = int(sys.argv[7])
 
 
 def strip_inline_code(text):
@@ -988,6 +1012,21 @@ else:
 
 if not members:
     print(f"Error: cohort {group} has no members in {spec_path}", file=sys.stderr)
+    sys.exit(1)
+
+if len(members) > 1 and enable_parallel_cohorts == "false":
+    print(
+        f"Error: enable_parallel_cohorts=false; cohort {group} has {len(members)}>1 members",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+if len(members) > max_parallel_cohort_size:
+    print(
+        f"Error: cohort {group} has {len(members)} members; "
+        f"max_parallel_cohort_size={max_parallel_cohort_size}",
+        file=sys.stderr,
+    )
     sys.exit(1)
 
 member_set = set(members)
