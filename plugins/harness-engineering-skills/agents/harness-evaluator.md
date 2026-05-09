@@ -65,6 +65,14 @@ When the checkpoint type is `frontend` or `fullstack`:
 - `evaluation.md` in the checkpoint's iter-N/ directory (format provided in protocol reference in your prompt)
 - `evidence/` directory with screenshots, test output, API responses
 
+When writing `evaluation.md`, populate the optional `evaluator_model`
+field in the YAML frontmatter when you can determine it (see
+`protocol-quick-ref.md` § evaluation.md and ADR 0005). It complements
+the existing `evaluator_host` and `evaluator_session_id` fields and
+lets retrospective analyses split same-host model versions (e.g.,
+Opus 4.6 vs 4.7). Omit the field rather than fabricating a placeholder
+when the value is genuinely unknown.
+
 ## Boundaries
 
 **Will:**
