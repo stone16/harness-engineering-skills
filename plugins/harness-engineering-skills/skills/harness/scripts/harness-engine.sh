@@ -21,6 +21,7 @@ set -uo pipefail
 #   with-commit-lock    Run a command under the per-task commit lock
 #   end-iteration       Record iteration end_sha after Generator commits
 #   pass-checkpoint     Verify evaluation PASS, write status.md=PASS, record final_sha
+#   escalate-checkpoint Mark checkpoint escalated for cohort partial-pass
 #   pass-cohort         Mark a cohort PASS after all members are terminal
 #   begin-e2e           Record e2e_baseline_sha, create e2e directory structure
 #   pass-e2e            Verify E2E report PASS, write status.md=PASS, record e2e_final_sha
@@ -219,6 +220,7 @@ Commands:
   with-commit-lock      Run a command under the per-task commit lock
   end-iteration         Record end of a Generator iteration
   pass-checkpoint       Mark checkpoint as PASS (requires evaluator PASS)
+  escalate-checkpoint   Mark checkpoint escalated for cohort partial-pass
   pass-cohort           Mark a checkpoint cohort as PASS
   begin-e2e             Start E2E verification phase
   pass-e2e              Mark E2E as PASS (requires E2E report PASS)
@@ -313,6 +315,10 @@ current_sha() {
   git rev-parse HEAD 2>/dev/null
 }
 
+engine_script_dir() {
+  cd "$(dirname "${BASH_SOURCE[0]}")" && pwd
+}
+
 require_next_arg() {
   local option="$1"
   local index="$2"
@@ -338,6 +344,11 @@ parse_group_arg() {
 
   if [[ -z "$group" ]]; then
     echo "Error: --group is required for this command" >&2
+    exit 1
+  fi
+
+  if [[ ! "$group" =~ ^[A-Z]$ && ! "$group" =~ ^[0-9]{2}$ ]]; then
+    echo "Error: --group must be a single uppercase letter A-Z or a two-digit checkpoint id (got: ${group})" >&2
     exit 1
   fi
 
@@ -912,6 +923,8 @@ cmd_begin_cohort() {
   require_git_state
   require_phase "init" "checkpoints" "Task has advanced past the checkpoint phase. Start a new task instead of re-running begin-cohort."
 
+  # The parallel_group parser is delegated to _cohort_spec.py; this command
+  # remains the engine surface that emits BEGIN_COHORT_OK.
   local group
   group="$(parse_group_arg)"
 
@@ -939,187 +952,9 @@ cmd_begin_cohort() {
     exit 1
   fi
 
-  if ! members=$(python3 - "$spec" "$gs" "$group" "$sha" "$tmp" "$enable_parallel_cohorts" "$max_parallel_cohort_size" <<'PY'
-import json
-import pathlib
-import re
-import sys
-
-spec_path = pathlib.Path(sys.argv[1])
-state_path = pathlib.Path(sys.argv[2])
-group = sys.argv[3]
-baseline_sha = sys.argv[4]
-out_path = pathlib.Path(sys.argv[5])
-enable_parallel_cohorts = sys.argv[6].lower()
-max_parallel_cohort_size = int(sys.argv[7])
-
-
-def strip_inline_code(text):
-    return re.sub(r"`[^`]*`", "", text)
-
-
-def canon_path(path):
-    value = path.strip()
-    value = re.sub(r"\s+\(new\)\s*$", "", value)
-    while value.startswith("./"):
-        value = value[2:]
-    return value.strip()
-
-
-def normalize_cp(value):
-    match = re.search(r"CP\s*0*([0-9]+)", value, re.IGNORECASE)
-    if not match:
-        return ""
-    return f"{int(match.group(1)):02d}"
-
-
-def checkpoint_sections(text):
-    sections = {}
-    current = None
-    current_lines = []
-    in_fence = False
-    for line in text.splitlines():
-        if line.strip().startswith("```"):
-            in_fence = not in_fence
-        match = re.match(r"^### Checkpoint ([0-9]{2}):", line)
-        if match and not in_fence:
-            if current:
-                sections[current] = current_lines
-            current = match.group(1)
-            current_lines = [line]
-        elif current:
-            current_lines.append(line)
-    if current:
-        sections[current] = current_lines
-    return sections
-
-
-def parse_section(lines):
-    meta = {"group": "", "depends": set(), "files": set()}
-    in_fence = False
-    in_files = False
-    for raw_line in lines:
-        line = raw_line.rstrip("\n")
-        stripped = line.strip()
-        if stripped.startswith("```"):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
-
-        no_inline = strip_inline_code(line)
-        group_match = re.match(r"^\s*-\s*(?:\*\*)?parallel_group(?:\*\*)?:\s*(\S+)\s*$", no_inline)
-        if group_match:
-            meta["group"] = group_match.group(1).strip()
-            in_files = False
-            continue
-
-        depends_match = re.match(r"^\s*-\s*(?:\*\*)?Depends on(?:\*\*)?:\s*(.*)$", no_inline, re.IGNORECASE)
-        if depends_match:
-            in_files = False
-            dep_text = depends_match.group(1)
-            for dep in re.findall(r"CP\s*0*[0-9]+", dep_text, re.IGNORECASE):
-                cp = normalize_cp(dep)
-                if cp:
-                    meta["depends"].add(cp)
-            continue
-
-        files_match = re.match(r"^\s*-\s*(?:\*\*)?Files of interest(?:\*\*)?:\s*(.*)$", no_inline, re.IGNORECASE)
-        if files_match:
-            in_files = True
-            inline = files_match.group(1).strip()
-            if inline:
-                for part in inline.split(","):
-                    path = canon_path(part)
-                    if path:
-                        meta["files"].add(path)
-            continue
-
-        metadata_match = re.match(r"^\s*-\s*(?:\*\*)?(?:Scope|Depends on|Type|parallel_group|Acceptance criteria|Effort estimate)(?:\*\*)?\b", no_inline, re.IGNORECASE)
-        if metadata_match:
-            in_files = False
-
-        if in_files:
-            item_match = re.match(r"^\s*-\s*(.+)$", no_inline)
-            if item_match:
-                for part in item_match.group(1).split(","):
-                    path = canon_path(part)
-                    if path:
-                        meta["files"].add(path)
-    return meta
-
-
-sections = checkpoint_sections(spec_path.read_text())
-if not sections:
-    print(f"Error: no checkpoints found in {spec_path}", file=sys.stderr)
-    sys.exit(1)
-
-parsed = {cp: parse_section(lines) for cp, lines in sections.items()}
-explicit_members = [cp for cp, meta in parsed.items() if meta["group"] == group]
-if explicit_members:
-    members = sorted(explicit_members)
-else:
-    members = [group] if group in parsed and not parsed[group]["group"] else []
-
-if not members:
-    print(f"Error: cohort {group} has no members in {spec_path}", file=sys.stderr)
-    sys.exit(1)
-
-if len(members) > 1 and enable_parallel_cohorts == "false":
-    print(
-        f"Error: enable_parallel_cohorts=false; cohort {group} has {len(members)}>1 members",
-        file=sys.stderr,
-    )
-    sys.exit(1)
-
-if len(members) > max_parallel_cohort_size:
-    print(
-        f"Error: cohort {group} has {len(members)} members; "
-        f"max_parallel_cohort_size={max_parallel_cohort_size}",
-        file=sys.stderr,
-    )
-    sys.exit(1)
-
-member_set = set(members)
-for cp in members:
-    for dep in sorted(parsed[cp]["depends"]):
-        if dep in member_set:
-            first, second = sorted([cp, dep])
-            print(
-                f"Error: cohort {group} members CP{first} and CP{second} have Depends on edge; "
-                f"same-group members must be independent ({spec_path})",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-
-for idx, cp_a in enumerate(members):
-    files_a = parsed[cp_a]["files"]
-    for cp_b in members[idx + 1 :]:
-        overlap = sorted(files_a & parsed[cp_b]["files"])
-        if overlap:
-            print(
-                f"Error: cohort {group} members CP{cp_a} and CP{cp_b} have overlapping "
-                f"Files of interest path {overlap[0]} at {spec_path}",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-
-state = json.loads(state_path.read_text())
-state["phase"] = "checkpoints"
-cohorts = state.setdefault("cohorts", {})
-cohorts[group] = {
-    "members": members,
-    "status": "pending",
-    "baseline_sha": baseline_sha,
-}
-checkpoints = state.setdefault("checkpoints", {})
-for cp in members:
-    checkpoints.setdefault(cp, {})["cohort"] = group
-
-out_path.write_text(json.dumps(state, indent=2) + "\n")
-print(",".join(members))
-PY
-  ); then
+  local cohort_spec_py
+  cohort_spec_py="$(engine_script_dir)/_cohort_spec.py"
+  if ! members=$(python3 "$cohort_spec_py" begin-cohort "$spec" "$gs" "$group" "$sha" "$tmp" "$enable_parallel_cohorts" "$max_parallel_cohort_size"); then
     rm -f "$tmp"
     exit 1
   fi
@@ -1156,130 +991,9 @@ detect_drift_shadow() {
   iter_dir="$(harness_dir)/checkpoints/${checkpoint}/iter-${iteration}"
   mkdir -p "$iter_dir"
 
-  python3 - "$spec" "$gs" "$checkpoint" "$cohort" "$iter_dir" "$iteration" "$changed" <<'PY'
-import json
-import pathlib
-import re
-import subprocess
-import sys
-
-spec_path = pathlib.Path(sys.argv[1])
-state_path = pathlib.Path(sys.argv[2])
-checkpoint = sys.argv[3]
-cohort = sys.argv[4]
-iter_dir = pathlib.Path(sys.argv[5])
-iteration = sys.argv[6]
-changed = [line for line in sys.argv[7].splitlines() if line.strip()]
-
-
-def strip_inline_code(text):
-    return re.sub(r"`[^`]*`", "", text)
-
-
-def canon_path(path):
-    value = path.strip()
-    value = re.sub(r"\s+\(new\)\s*$", "", value)
-    while value.startswith("./"):
-        value = value[2:]
-    return value.strip()
-
-
-def checkpoint_sections(text):
-    sections = {}
-    current = None
-    current_lines = []
-    in_fence = False
-    for line in text.splitlines():
-        if line.strip().startswith("```"):
-            in_fence = not in_fence
-        match = re.match(r"^### Checkpoint ([0-9]{2}):", line)
-        if match and not in_fence:
-            if current:
-                sections[current] = current_lines
-            current = match.group(1)
-            current_lines = [line]
-        elif current:
-            current_lines.append(line)
-    if current:
-        sections[current] = current_lines
-    return sections
-
-
-def files_of_interest(lines):
-    files = set()
-    in_fence = False
-    in_files = False
-    for raw_line in lines:
-        line = raw_line.rstrip("\n")
-        stripped = line.strip()
-        if stripped.startswith("```"):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
-        no_inline = strip_inline_code(line)
-        files_match = re.match(r"^\s*-\s*(?:\*\*)?Files of interest(?:\*\*)?:\s*(.*)$", no_inline, re.IGNORECASE)
-        if files_match:
-            in_files = True
-            inline = files_match.group(1).strip()
-            if inline:
-                for part in inline.split(","):
-                    path = canon_path(part)
-                    if path:
-                        files.add(path)
-            continue
-        metadata_match = re.match(r"^\s*-\s*(?:\*\*)?(?:Scope|Depends on|Type|parallel_group|Acceptance criteria|Effort estimate)(?:\*\*)?\b", no_inline, re.IGNORECASE)
-        if metadata_match:
-            in_files = False
-        if in_files:
-            item_match = re.match(r"^\s*-\s*(.+)$", no_inline)
-            if item_match:
-                for part in item_match.group(1).split(","):
-                    path = canon_path(part)
-                    if path:
-                        files.add(path)
-    return files
-
-
-state = json.loads(state_path.read_text())
-members = state.get("cohorts", {}).get(cohort, {}).get("members", [])
-if checkpoint not in members:
-    sys.exit(0)
-
-sections = checkpoint_sections(spec_path.read_text())
-own_files = files_of_interest(sections.get(checkpoint, []))
-peer_files = {}
-for member in members:
-    if member == checkpoint:
-        continue
-    for path in files_of_interest(sections.get(member, [])):
-        peer_files.setdefault(path, member)
-
-for raw_path in changed:
-    path = canon_path(raw_path)
-    peer = peer_files.get(path)
-    if peer and path not in own_files:
-        detected_at = subprocess.check_output(
-            ["date", "-u", "+%Y-%m-%dT%H:%M:%SZ"], text=True
-        ).strip()
-        (iter_dir / "drift-event.md").write_text(
-            "---\n"
-            f"offending_path: {path}\n"
-            f"offending_checkpoint: {checkpoint}\n"
-            f"peer_checkpoint: {peer}\n"
-            "severity: shadow\n"
-            f"detected_at: {detected_at}\n"
-            "---\n\n"
-            "Drift detected. The iteration reports FAIL while this audit artifact remains available.\n"
-        )
-        print("DRIFT_DETECTED")
-        print(f"TASK_ID={state.get('task_id', '')}")
-        print(f"CHECKPOINT={checkpoint}")
-        print(f"ITERATION={iteration}")
-        print(f"OFFENDING_PATH={path}")
-        print(f"PEER_CHECKPOINT={peer}")
-        sys.exit(66)
-PY
+  local cohort_spec_py
+  cohort_spec_py="$(engine_script_dir)/_cohort_spec.py"
+  python3 "$cohort_spec_py" drift-shadow "$spec" "$gs" "$checkpoint" "$cohort" "$iter_dir" "$iteration" "$changed"
 }
 
 record_iteration_and_detect_drift() {
@@ -1435,12 +1149,11 @@ print(max((int(k) for k in iters.keys()), default=0))
     exit 1
   fi
 
-  local drift_event
-  drift_event=$(find "$cp_dir" -path "${cp_dir}/iter-*/drift-event.md" -type f 2>/dev/null | sort | head -1)
-  if [[ -n "$drift_event" ]]; then
+  local drift_event="${cp_dir}/iter-${last_iter}/drift-event.md"
+  if [[ -f "$drift_event" ]]; then
     echo "PHASE_BLOCKED" >&2
     echo "REASON=${drift_event} exists; checkpoint ${CHECKPOINT} has unresolved cohort drift" >&2
-    echo "NEXT_STEP=Retry checkpoint ${CHECKPOINT} without touching peer cohort files; remove stale drift artifacts only after a clean retry" >&2
+    echo "NEXT_STEP=Retry checkpoint ${CHECKPOINT} without touching peer cohort files" >&2
     exit 1
   fi
 
@@ -1582,7 +1295,7 @@ escalated = False
 for cp_id in members:
     cp = checkpoints.get(cp_id, {})
     cp_status = str(cp.get("status", "")).lower()
-    if cp_status == "escalated":
+    if cp_status == "escalated" or cp.get("aborted") is True:
         escalated = True
         continue
     if cp_status == "passed" or cp.get("final_sha"):
@@ -1609,6 +1322,58 @@ PASS_COHORT_OK
 TASK_ID=${TASK_ID}
 GROUP=${group}
 STATUS=${status}
+ENDOUT
+}
+
+# ============================================================================
+# Command: escalate-checkpoint
+# ============================================================================
+
+cmd_escalate_checkpoint() {
+  require_task_id
+  require_checkpoint
+  require_git_state
+  require_phase "checkpoints" "Checkpoint escalation is only valid during checkpoint execution"
+
+  local gs tmp cp_dir
+  gs="$(git_state_file)"
+  tmp=$(mktemp)
+  cp_dir="$(harness_dir)/checkpoints/${CHECKPOINT}"
+
+  python3 - "$gs" "$CHECKPOINT" "$tmp" <<'PY'
+import json
+import pathlib
+import sys
+
+state_path = pathlib.Path(sys.argv[1])
+checkpoint = sys.argv[2]
+out_path = pathlib.Path(sys.argv[3])
+
+state = json.loads(state_path.read_text())
+checkpoints = state.setdefault("checkpoints", {})
+cp = checkpoints.setdefault(checkpoint, {})
+cp["status"] = "escalated"
+out_path.write_text(json.dumps(state, indent=2) + "\n")
+PY
+
+  mv "$tmp" "$gs" || { rm -f "$tmp"; exit 1; }
+  mkdir -p "$cp_dir"
+  cat > "${cp_dir}/status.md" <<ENDSTATUS
+---
+checkpoint: ${CHECKPOINT}
+result: ESCALATED
+---
+
+## Summary
+
+Checkpoint ${CHECKPOINT} escalated by engine command.
+ENDSTATUS
+
+  cat <<ENDOUT
+ESCALATE_CHECKPOINT_OK
+TASK_ID=${TASK_ID}
+CHECKPOINT=${CHECKPOINT}
+STATUS_FILE=${cp_dir}/status.md
 ENDOUT
 }
 
@@ -2583,115 +2348,7 @@ for header in ['## Constraints', '## Technical Approach']:
 " "$spec")
 
   local cohort_restrictions
-  cohort_restrictions=$(python3 - "$spec" "$gs" "$CHECKPOINT" <<'PY'
-import json
-import pathlib
-import re
-import sys
-
-spec_path = pathlib.Path(sys.argv[1])
-state_path = pathlib.Path(sys.argv[2])
-checkpoint = sys.argv[3]
-
-
-def strip_inline_code(text):
-    return re.sub(r"`[^`]*`", "", text)
-
-
-def canon_path(path):
-    value = path.strip()
-    value = re.sub(r"\s+\(new\)\s*$", "", value)
-    while value.startswith("./"):
-        value = value[2:]
-    return value.strip()
-
-
-def checkpoint_sections(text):
-    sections = {}
-    current = None
-    current_lines = []
-    in_fence = False
-    for line in text.splitlines():
-        if line.strip().startswith("```"):
-            in_fence = not in_fence
-        match = re.match(r"^### Checkpoint ([0-9]{2}):", line)
-        if match and not in_fence:
-            if current:
-                sections[current] = current_lines
-            current = match.group(1)
-            current_lines = [line]
-        elif current:
-            current_lines.append(line)
-    if current:
-        sections[current] = current_lines
-    return sections
-
-
-def files_of_interest(lines):
-    files = []
-    seen = set()
-    in_fence = False
-    in_files = False
-    for raw_line in lines:
-        line = raw_line.rstrip("\n")
-        stripped = line.strip()
-        if stripped.startswith("```"):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
-        no_inline = strip_inline_code(line)
-        files_match = re.match(r"^\s*-\s*(?:\*\*)?Files of interest(?:\*\*)?:\s*(.*)$", no_inline, re.IGNORECASE)
-        if files_match:
-            in_files = True
-            inline = files_match.group(1).strip()
-            if inline:
-                for part in inline.split(","):
-                    path = canon_path(part)
-                    if path and path not in seen:
-                        files.append(path)
-                        seen.add(path)
-            continue
-        metadata_match = re.match(r"^\s*-\s*(?:\*\*)?(?:Scope|Depends on|Type|parallel_group|Acceptance criteria|Effort estimate)(?:\*\*)?\b", no_inline, re.IGNORECASE)
-        if metadata_match:
-            in_files = False
-        if in_files:
-            item_match = re.match(r"^\s*-\s*(.+)$", no_inline)
-            if item_match:
-                for part in item_match.group(1).split(","):
-                    path = canon_path(part)
-                    if path and path not in seen:
-                        files.append(path)
-                        seen.add(path)
-    return files
-
-
-state = json.loads(state_path.read_text())
-cp = state.get("checkpoints", {}).get(checkpoint, {})
-cohort = cp.get("cohort", "")
-if not cohort:
-    sys.exit(0)
-
-members = state.get("cohorts", {}).get(cohort, {}).get("members", [])
-peers = [member for member in members if member != checkpoint]
-if not peers:
-    sys.exit(0)
-
-sections = checkpoint_sections(spec_path.read_text())
-print("## Peer Cohort Restrictions")
-print("")
-print(f"Checkpoint {checkpoint} is in cohort `{cohort}`. Do not touch peer cohort files; end-iteration reports `DRIFT_DETECTED` if this checkpoint changes a peer-owned path.")
-print("")
-for peer in peers:
-    files = files_of_interest(sections.get(peer, []))
-    print(f"- CP{peer}:")
-    if files:
-        for path in files:
-            print(f"  - {path}")
-    else:
-        print("  - (no Files of interest declared)")
-PY
-)
+  cohort_restrictions=$(python3 "$(engine_script_dir)/_cohort_spec.py" peer-restrictions "$spec" "$gs" "$CHECKPOINT")
 
   # Write context.md
   local cp_dir
@@ -3034,6 +2691,13 @@ print(count)
         reason="Cannot pass checkpoint from state: ${current_state}. Must have at least one iteration."
       fi
       ;;
+    escalate-checkpoint)
+      if [[ "$phase" == "checkpoints" ]]; then
+        valid="true"
+      else
+        reason="Cannot escalate checkpoint from phase: ${phase}. Must be in checkpoints phase."
+      fi
+      ;;
     pass-cohort)
       if [[ "$phase" == "checkpoints" ]]; then
         valid="true"
@@ -3145,6 +2809,7 @@ print(count)
 # Main Dispatch
 # ============================================================================
 
+# ============ helpers end ============
 parse_args "$@"
 
 case "$COMMAND" in
@@ -3157,6 +2822,7 @@ case "$COMMAND" in
   with-commit-lock)     cmd_with_commit_lock ;;
   end-iteration)        cmd_end_iteration ;;
   pass-checkpoint)      cmd_pass_checkpoint ;;
+  escalate-checkpoint)  cmd_escalate_checkpoint ;;
   pass-cohort)          cmd_pass_cohort ;;
   begin-e2e)            cmd_begin_e2e ;;
   pass-e2e)             cmd_pass_e2e ;;

@@ -18,7 +18,7 @@ assert_contains() {
 source_engine_functions() {
   # Load helper functions/constants without executing the engine dispatch table.
   # shellcheck disable=SC1090
-  source <(sed '/^parse_args "\$@"/,$d' "$engine")
+  source <(sed '/^# ============ helpers end ============/,$d' "$engine")
 }
 
 setup_repo() {

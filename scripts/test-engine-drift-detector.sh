@@ -6,35 +6,7 @@ engine="$repo_root/plugins/harness-engineering-skills/skills/harness/scripts/har
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT INT TERM
 
-assert_contains() {
-  local file="$1"
-  local needle="$2"
-  grep -Fq -- "$needle" "$file" || {
-    echo "missing expected text in $file: $needle" >&2
-    exit 1
-  }
-}
-
-setup_repo() {
-  local workdir="$1"
-  local task="$2"
-  local origin="${workdir}-origin.git"
-  git init -q --bare "$origin"
-  git clone -q "$origin" "$workdir"
-  (
-    cd "$workdir"
-    git checkout -q -b main
-    git config user.email "test@example.com"
-    git config user.name "Harness Test"
-    echo root > README.md
-    echo baseline-a > a.txt
-    echo baseline-b > b.txt
-    git add README.md a.txt b.txt
-    git commit -q -m "initial"
-    git push -q -u origin main
-    mkdir -p ".harness/$task"
-  )
-}
+source "$repo_root/scripts/lib/test-helpers.sh"
 
 write_spec() {
   local repo="$1"
@@ -71,7 +43,7 @@ branch: main
 - Acceptance criteria:
   - [ ] second
 - Files of interest:
-  - b.txt
+  - `b.txt`
 - Effort estimate: S
 SPEC
 }

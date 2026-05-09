@@ -551,6 +551,7 @@ Sections:
       "cohort": "<letter>",
       "iterations": { "1": { "end_sha": "..." } },
       "final_sha": "...",
+      "status": "passed | escalated | (empty)",
       "aborted": false
     }
   },
@@ -579,6 +580,8 @@ Sections:
 **Phase commands:**
 - `pass-checkpoint` — requires latest iteration `output-summary.md`, latest iteration `evaluation.md`, `evaluation.md` verdict PASS, and fresh `evaluator-session-id.txt`; then records final SHA.
 - `with-commit-lock --task-id <id> -- <command>` — runs the command under `.harness/<task-id>/.commit.lock`; cohort Generators use this to keep their `git commit` and `end-iteration` boundary in one lock window.
+- `escalate-checkpoint --task-id <id> --checkpoint <NN>` — records `checkpoints.<NN>.status = "escalated"` and writes `status.md` with `result: ESCALATED`; cohort partial-PASS uses this engine-owned state instead of manual `git-state.json` edits.
+- `pass-cohort --task-id <id> --group <letter>` — records `passed` when all members passed, or `partial-pass` when one or more members are engine-marked `escalated` or `aborted`.
 - `pass-e2e` — requires latest `e2e/iter-N/e2e-report.md` verdict PASS; then records final SHA and sets phase to `e2e`.
 - `pass-review-loop` — verifies `.review-loop/latest/summary.md` + `rounds.json` exist, `session.status` is `consensus` or `read_only_complete`, and `session.total_rounds >= 1`; then records the session id and sets phase to `review-loop`
 - `skip-review-loop` — only allowed when `cross_model_review=false` in config, sets phase to `review-loop`

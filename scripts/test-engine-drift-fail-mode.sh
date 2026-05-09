@@ -6,44 +6,7 @@ engine="$repo_root/plugins/harness-engineering-skills/skills/harness/scripts/har
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT INT TERM
 
-assert_contains() {
-  local file="$1"
-  local needle="$2"
-  grep -Fq -- "$needle" "$file" || {
-    echo "missing expected text in $file: $needle" >&2
-    exit 1
-  }
-}
-
-assert_not_contains() {
-  local file="$1"
-  local needle="$2"
-  if grep -Fq -- "$needle" "$file"; then
-    echo "unexpected text in $file: $needle" >&2
-    exit 1
-  fi
-}
-
-setup_repo() {
-  local workdir="$1"
-  local task="$2"
-  local origin="${workdir}-origin.git"
-  git init -q --bare "$origin"
-  git clone -q "$origin" "$workdir"
-  (
-    cd "$workdir"
-    git checkout -q -b main
-    git config user.email "test@example.com"
-    git config user.name "Harness Test"
-    echo root > README.md
-    echo baseline-a > a.txt
-    echo baseline-b > b.txt
-    git add README.md a.txt b.txt
-    git commit -q -m "initial"
-    git push -q -u origin main
-    mkdir -p ".harness/$task"
-  )
-}
+source "$repo_root/scripts/lib/test-helpers.sh"
 
 write_cohort_spec() {
   local repo="$1"
@@ -80,7 +43,7 @@ branch: main
 - Acceptance criteria:
   - [ ] second
 - Files of interest:
-  - b.txt
+  - `b.txt`
 - **Effort estimate**: S
 SPEC
 }
@@ -168,6 +131,28 @@ assert_cohort_peer_file_fails_iteration() {
       exit 1
     fi
     assert_contains pass-drift.err "unresolved cohort drift"
+
+    "$engine" with-commit-lock --task-id "$task" -- bash -c '
+      echo clean-retry > a.txt
+      git add a.txt
+      git commit -q -m "cp01 clean retry touches own file"
+      "$0" end-iteration --task-id "$1" --checkpoint 01
+    ' "$engine" "$task" > clean-retry.out
+    assert_contains clean-retry.out "END_ITERATION_OK"
+    [[ -f ".harness/$task/checkpoints/01/iter-1/drift-event.md" ]] || {
+      echo "expected iter-1 drift-event.md to remain as evidence" >&2
+      exit 1
+    }
+    [[ ! -f ".harness/$task/checkpoints/01/iter-2/drift-event.md" ]] || {
+      echo "clean retry unexpectedly wrote drift-event.md" >&2
+      exit 1
+    }
+    mkdir -p ".harness/$task/checkpoints/01/iter-2/evidence"
+    echo "summary" > ".harness/$task/checkpoints/01/iter-2/output-summary.md"
+    printf -- "---\nverdict: PASS\n---\n" > ".harness/$task/checkpoints/01/iter-2/evaluation.md"
+    printf '%s\n' "22222222-2222-4222-8222-222222222222" > ".harness/$task/checkpoints/01/iter-2/evaluator-session-id.txt"
+    "$engine" pass-checkpoint --task-id "$task" --checkpoint 01 > pass-clean-retry.out
+    assert_contains pass-clean-retry.out "PASS_CHECKPOINT_OK"
 
     "$engine" with-commit-lock --task-id "$task" -- bash -c '
       echo peer-owned > b.txt

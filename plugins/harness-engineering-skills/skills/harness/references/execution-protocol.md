@@ -146,7 +146,10 @@ One match → load. Multiple → ask user. None → inform user.
    the serial per-checkpoint loop:
 
    a. `$ENGINE begin-cohort --task-id <id> --group <letter>`
-   b. Start parallel dispatch of Generators in a single Agent-tool batch in Claude Code,
+   b. For each cohort member, run
+      `$ENGINE begin-checkpoint --task-id <id> --checkpoint <NN>` so the
+      member has its own `baseline_sha`, checkpoint directory, and abort target.
+   c. Start parallel dispatch of Generators in a single Agent-tool batch in Claude Code,
       or as `&`-backgrounded `claude-agent-invoke.sh` calls in Codex.
       Each Generator receives only its checkpoint context, writes its
       own `output-summary.md`, and uses a per-Generator timeout reusing
@@ -156,15 +159,17 @@ One match → load. Multiple → ask user. None → inform user.
       inside one `$ENGINE with-commit-lock --task-id <id> -- <command>`
       invocation so the drift detector attributes the locked commit range to
       the correct cohort member.
-   c. After all Generators finish, run parallel Evaluators after all Generators finish;
-      each Evaluator receives only its member checkpoint
-      spec, member diff, member `output-summary.md`, and
-      `protocol-quick-ref.md`.
-   d. Aggregate member verdicts: all PASS → `$ENGINE pass-cohort --task-id <id> --group <letter>`;
+   d. Run parallel Evaluators after all Generators finish; each Evaluator
+      receives only its member checkpoint spec, member diff, member
+      `output-summary.md`, and `protocol-quick-ref.md`.
+   e. Aggregate member verdicts: all PASS → `$ENGINE pass-cohort --task-id <id> --group <letter>`;
       any member FAIL or REVIEW follows the same retry rules as the
       per-checkpoint loop for that member. If one or more members exhaust
       `max_eval_rounds` while peers in the same cohort reached PASS, escalate
-      via the cohort partial-PASS pause scenario above.
+      via the cohort partial-PASS pause scenario above; after human approval,
+      record each exhausted member with
+      `$ENGINE escalate-checkpoint --task-id <id> --checkpoint <NN>` before
+      `$ENGINE pass-cohort --task-id <id> --group <letter>`.
       If a member's `end-iteration` emits `DRIFT_DETECTED`, forward
       `OFFENDING_PATH=...` and `PEER_CHECKPOINT=...` as FAIL feedback to that
       member only; do not abort peers that already completed their own locked

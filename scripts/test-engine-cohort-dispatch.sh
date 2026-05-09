@@ -174,6 +174,45 @@ branch: main
 SPEC
 }
 
+write_spec_missing_files() {
+  local repo="$1"
+  local task="$2"
+  cat > "$repo/.harness/$task/spec.md" <<'SPEC'
+---
+task_id: cohort-missing-files
+title: cohort missing files fixture
+version: 1
+status: approved
+branch: main
+---
+
+## Checkpoints
+
+### Checkpoint 01: first
+
+- Scope: first
+- Depends on: none
+- Type: infrastructure
+- parallel_group: A
+- Acceptance criteria:
+  - [ ] first
+- Files of interest:
+- Effort estimate: S
+
+### Checkpoint 02: second
+
+- Scope: second
+- Depends on: none
+- Type: infrastructure
+- parallel_group: A
+- Acceptance criteria:
+  - [ ] second
+- Files of interest:
+  - b.sh
+- Effort estimate: S
+SPEC
+}
+
 write_spec_bold_cohort_metadata() {
   local repo="$1"
   local task="$2"
@@ -309,6 +348,35 @@ assert_cohort_rejected_with_overlap() {
     fi
     assert_contains err.txt "overlapping Files of interest path scripts/foo.sh"
   )
+
+  task="cohort-overlap-backticks"
+  repo="$tmpdir/overlap-backticks"
+  setup_repo "$repo" "$task"
+  write_spec_overlap "$repo" "$task" '`scripts/foo.sh`' "scripts/foo.sh"
+  (
+    cd "$repo"
+    if "$engine" begin-cohort --task-id "$task" --group A >out.txt 2>err.txt; then
+      echo "begin-cohort accepted backticked path overlap" >&2
+      exit 1
+    fi
+    assert_contains err.txt "overlapping Files of interest path scripts/foo.sh"
+  )
+}
+
+assert_cohort_rejects_empty_files_of_interest() {
+  local task="cohort-missing-files"
+  local repo="$tmpdir/missing-files"
+  setup_repo "$repo" "$task"
+  write_spec_missing_files "$repo" "$task"
+  (
+    cd "$repo"
+    if "$engine" begin-cohort --task-id "$task" --group A >out.txt 2>err.txt; then
+      echo "begin-cohort accepted empty Files of interest for a multi-member cohort" >&2
+      exit 1
+    fi
+    assert_contains err.txt "member CP01 has empty Files of interest"
+    assert_contains err.txt "multi-member cohorts require disjoint explicit files"
+  )
 }
 
 assert_cohort_accepted_disjoint() {
@@ -363,6 +431,57 @@ PY
   )
 }
 
+assert_cohort_partial_pass_from_escalated_member() {
+  local task="cohort-partial-pass"
+  local repo="$tmpdir/partial-pass"
+  setup_repo "$repo" "$task"
+  write_spec_disjoint "$repo" "$task"
+  (
+    cd "$repo"
+    "$engine" begin-cohort --task-id "$task" --group A >begin.out
+    "$engine" validate-transition --task-id "$task" escalate-checkpoint >validate-escalate.out
+    assert_contains validate-escalate.out "TRANSITION_OK"
+    "$engine" escalate-checkpoint --task-id "$task" --checkpoint 02 >escalate.out
+    assert_contains escalate.out "ESCALATE_CHECKPOINT_OK"
+    assert_contains ".harness/$task/checkpoints/02/status.md" "result: ESCALATED"
+    python3 - "$task" <<'PY'
+import json
+import pathlib
+import sys
+
+task = sys.argv[1]
+path = pathlib.Path(f".harness/{task}/git-state.json")
+state = json.loads(path.read_text())
+state["checkpoints"].setdefault("01", {})["status"] = "passed"
+state["checkpoints"]["01"]["final_sha"] = "test-final-sha"
+path.write_text(json.dumps(state, indent=2) + "\n")
+PY
+    "$engine" pass-cohort --task-id "$task" --group A >pass.out
+    assert_contains pass.out "PASS_COHORT_OK"
+    assert_contains pass.out "STATUS=partial-pass"
+  )
+}
+
+assert_invalid_group_rejected() {
+  local task="cohort-invalid-group"
+  local repo="$tmpdir/invalid-group"
+  setup_repo "$repo" "$task"
+  write_spec_disjoint "$repo" "$task"
+  (
+    cd "$repo"
+    if "$engine" begin-cohort --task-id "$task" --group AA >out.txt 2>err.txt; then
+      echo "begin-cohort accepted invalid group AA" >&2
+      exit 1
+    fi
+    assert_contains err.txt "must be a single uppercase letter A-Z or a two-digit checkpoint id"
+    if "$engine" begin-cohort --task-id "$task" --group a >out-a.txt 2>err-a.txt; then
+      echo "begin-cohort accepted invalid group a" >&2
+      exit 1
+    fi
+    assert_contains err-a.txt "must be a single uppercase letter A-Z or a two-digit checkpoint id"
+  )
+}
+
 assert_cohort_accepts_bold_metadata_without_file_leak() {
   local task="cohort-bold"
   local repo="$tmpdir/bold"
@@ -412,7 +531,10 @@ PY
 
 assert_cohort_rejected_with_cycle
 assert_cohort_rejected_with_overlap
+assert_cohort_rejects_empty_files_of_interest
 assert_cohort_accepted_disjoint
+assert_cohort_partial_pass_from_escalated_member
+assert_invalid_group_rejected
 assert_cohort_accepts_bold_metadata_without_file_leak
 assert_serial_spec_uses_single_member_cohorts
 
