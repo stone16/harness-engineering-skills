@@ -169,7 +169,15 @@ assert_cohort_peer_file_writes_shadow_artifact() {
     echo changed > b.txt
     git add b.txt
     git commit -q -m "cohort member touches peer file"
+    set +e
     "$engine" end-iteration --task-id "$task" --checkpoint 01 > end.out
+    status=$?
+    set -e
+    [[ "$status" -ne 0 ]] || {
+      echo "expected peer-file drift to fail the iteration after fail-mode flip" >&2
+      exit 1
+    }
+    assert_contains end.out "DRIFT_DETECTED"
     event=".harness/$task/checkpoints/01/iter-1/drift-event.md"
     assert_contains "$event" "offending_path: b.txt"
     assert_contains "$event" "offending_checkpoint: 01"

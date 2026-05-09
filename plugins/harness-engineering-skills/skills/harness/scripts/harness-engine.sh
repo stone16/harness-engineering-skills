@@ -1096,15 +1096,18 @@ detect_drift_shadow() {
   [[ -z "$baseline" ]] && return 0
   [[ -f "$spec" ]] || return 0
 
+  # end-iteration is the post-commit boundary; inspect HEAD so peer cohort
+  # commits already on the branch are not attributed to this checkpoint.
   local changed
-  changed=$(git diff --name-only "${baseline}..HEAD" 2>/dev/null || true)
+  changed=$(git diff-tree --no-commit-id --name-only -r HEAD 2>/dev/null || true)
+  [[ -z "$changed" ]] && changed=$(git diff --name-only "${baseline}..HEAD" 2>/dev/null || true)
   [[ -z "$changed" ]] && return 0
 
   local iter_dir
   iter_dir="$(harness_dir)/checkpoints/${checkpoint}/iter-${iteration}"
   mkdir -p "$iter_dir"
 
-  python3 - "$spec" "$gs" "$checkpoint" "$cohort" "$iter_dir" "$changed" <<'PY'
+  python3 - "$spec" "$gs" "$checkpoint" "$cohort" "$iter_dir" "$iteration" "$changed" <<'PY'
 import json
 import pathlib
 import re
@@ -1116,7 +1119,8 @@ state_path = pathlib.Path(sys.argv[2])
 checkpoint = sys.argv[3]
 cohort = sys.argv[4]
 iter_dir = pathlib.Path(sys.argv[5])
-changed = [line for line in sys.argv[6].splitlines() if line.strip()]
+iteration = sys.argv[6]
+changed = [line for line in sys.argv[7].splitlines() if line.strip()]
 
 
 def strip_inline_code(text):
@@ -1217,10 +1221,26 @@ for raw_path in changed:
             "severity: shadow\n"
             f"detected_at: {detected_at}\n"
             "---\n\n"
-            "Drift detected in shadow mode. The iteration proceeds normally.\n"
+            "Drift detected. The iteration reports FAIL while this audit artifact remains available.\n"
         )
-        break
+        print("DRIFT_DETECTED")
+        print(f"TASK_ID={state.get('task_id', '')}")
+        print(f"CHECKPOINT={checkpoint}")
+        print(f"ITERATION={iteration}")
+        print(f"OFFENDING_PATH={path}")
+        print(f"PEER_CHECKPOINT={peer}")
+        sys.exit(66)
 PY
+}
+
+record_iteration_and_detect_drift() {
+  local gs="$1"
+  local checkpoint="$2"
+  local iteration="$3"
+  local sha="$4"
+
+  json_add_iteration "$gs" "$checkpoint" "$iteration" "$sha" || return 1
+  detect_drift_shadow "$checkpoint" "$iteration"
 }
 
 # ============================================================================
@@ -1260,10 +1280,11 @@ else:
     echo "Warning: Empty iteration — HEAD is still at baseline SHA" >&2
   fi
 
-  # Record end_sha
-  json_add_iteration "$gs" "$CHECKPOINT" "$ITERATION" "$sha"
-
-  detect_drift_shadow "$CHECKPOINT" "$ITERATION"
+  # Record end_sha and run drift detection under the same per-task lock used
+  # for concurrent generator commit boundaries.
+  if ! acquire_commit_lock "$TASK_ID" record_iteration_and_detect_drift "$gs" "$CHECKPOINT" "$ITERATION" "$sha"; then
+    exit 1
+  fi
 
   # Pre-create next iteration directory
   local next_iter=$((ITERATION + 1))
