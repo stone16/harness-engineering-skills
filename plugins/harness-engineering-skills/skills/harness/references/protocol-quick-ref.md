@@ -870,3 +870,77 @@ Sections: Error Pattern Frequency (table: Category/Total/Last 10/Trend/Status), 
 
 Filed Issues rows may contain one URL or, for `target_repo: both`, both URLs
 on one line in the format defined by §issue-routing.
+
+---
+
+## Engine parser patterns
+
+The harness engine and downstream tooling parse metadata fields from
+`spec.md`, `output-summary.md`, `evaluation.md`, and other harness
+artifacts. Generator agents implementing new metadata fields, and
+checkpoint code introducing new metadata-field regexes, MUST adopt the
+defensive defaults below so the engine stays resilient to bold-decoration
+and other compatibility-only shape drift.
+
+### Compatibility envelope for metadata-field regexes
+
+Every metadata regex SHOULD tolerate `(\*\*)?` (or its PCRE-style
+non-capturing equivalent `(?:\*\*)?`) around the field name. Reference
+pattern, in portable ERE form (compatible with `grep -E` and `sed -E`):
+
+```
+^[[:space:]]*-[[:space:]]+(\*\*)?<field>(\*\*)?:[[:space:]]+(.+)$
+```
+
+PCRE-style equivalent (compatible with `grep -P` and Bash `[[ =~ ]]`):
+
+```
+^[[:space:]]*-[[:space:]]+(?:\*\*)?<field>(?:\*\*)?:[[:space:]]+(.+)$
+```
+
+Concretely, a metadata field named `Type` accepts both shapes on the same
+input line:
+
+| Shape                  | Canonical? | Engine reads it? | Spec Evaluator behavior         |
+|------------------------|------------|------------------|---------------------------------|
+| `- Type: backend`      | yes        | yes              | passes                          |
+| `- **Type**: backend`  | no (compat)| yes              | warns: normalize to canonical   |
+| `- *Type*: backend`    | no         | no               | error: invalid metadata         |
+
+This is the parser-side default for **all** metadata fields, not just
+`Type`. New fields introduced by checkpoints (for example
+`parallel_group`, `coverage_percent`, future cohort facets) MUST adopt
+the same envelope so a legacy or AI-emitted bold-decorated spec does not
+silently degrade to a parse miss. The Spec Evaluator continues to warn on
+the decorated form so the human author still gets a normalization hint;
+the parser-side envelope is purely a defensive default, not a license to
+emit the decorated shape.
+
+### Recurrence history
+
+This is a documented harness regression class. Recurrences in the retro
+log so far:
+
+- 2026-04-24 — `ENGINE-PARSER-FORMAT-DRIFT` (Type field).
+- 2026-04-26 — `PARSER-DECORATION-FRAGILITY` (legacy spec compatibility).
+- 2026-05-09 — `parallel-cohort-execution-v1` review-loop findings f6, f7
+  (`group_match`, `metadata_match`).
+
+Each instance had the same root cause: a hand-rolled metadata regex that
+only accepted the canonical un-bolded shape, paired with a Generator
+emitting the bold-decorated variant. Codifying the compatibility envelope
+as the parser-side default closes the class. See harness issue #40.
+
+### Scope
+
+This envelope is for metadata-field regexes — key/value lines the engine
+extracts from artifacts. It does NOT apply to:
+
+- Free-form prose (markdown body content, narrative sections).
+- Content where bold decoration is semantically meaningful (for example, a
+  checklist item where `**done**` is a status marker).
+- File-shape parsers (YAML frontmatter, JSON blobs) that have their own
+  language-level grammar.
+
+When in doubt: any line that becomes a structured field in a parsed
+artifact takes the envelope; markdown body content does not.
