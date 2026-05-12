@@ -70,12 +70,17 @@ For each checkpoint evaluate:
      Evaluator share one decidable threshold`.
 3. **Dependencies** — are inter-checkpoint dependencies explicit? Is the ordering correct?
    - **cross-CP artifact ownership conflict** — detects the same artifact
-     path, table, index, public symbol, or other named ownership surface being
-     mentioned by two or more checkpoints without an explicit lifecycle split
-     (create/update/finalize, producer/consumer, migration/use). Emit
-     `severity: warning` with `suggested_fix: assign one checkpoint as owner
-     of the artifact lifecycle and make later checkpoints consume or extend it
-     explicitly, or split the artifact into separately named surfaces`.
+     path, table, index, public symbol, or other named ownership surface
+     appearing in two or more checkpoints, **or appearing in both a Success
+     Criterion and a checkpoint acceptance bullet**, without an explicit
+     lifecycle split (create/update/finalize, producer/consumer,
+     migration/use). The check covers Success Criteria entries, checkpoint
+     acceptance bullets, and Files of interest paths. Emit `severity:
+     warning` with `suggested_fix: assign one checkpoint as owner of the
+     artifact lifecycle and make later checkpoints consume or extend it
+     explicitly, or split the artifact into separately named surfaces (e.g.
+     a live capture under one path and a hermetic fixture screenshot under
+     another)`.
    - **literal localhost port without override** — detects literal
      `localhost:<well-known-port>` values (`5432`, `5433`, `6379`, `8000`,
      `8080`, `9092`) without an environment-variable override surface such as
