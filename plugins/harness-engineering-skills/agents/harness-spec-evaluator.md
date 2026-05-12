@@ -107,7 +107,7 @@ For each checkpoint evaluate:
      resulting in avoidable Rule Conflict Notes. Emit `severity: warning`
      with `suggested_fix: reconcile the Success Criterion count with
      checkpoint-level TDD requirements — relax the count, drop the
-     TDD-sequence acceptance, or restate the count as a minimum (\`>=\`)`.
+     TDD-sequence acceptance, or restate the count as a minimum bound`.
 4. **Type accuracy** — is `frontend | backend | fullstack | infrastructure` correctly assigned?
    - **Canonical Type shape audit** — checkpoint metadata should use the
      canonical `- Type: <value>` form. If a checkpoint uses a non-canonical
