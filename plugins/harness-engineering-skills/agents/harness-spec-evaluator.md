@@ -96,6 +96,18 @@ For each checkpoint evaluate:
      installed-version citation for the executable API, or mark the name as
      approximate and instruct the Generator to resolve the canonical API from
      the installed package/docs before implementation`.
+   - **cross-CP commit count vs TDD sequence contradiction** — fires when
+     Success Criteria contains an entry asserting an explicit commit count
+     `N` (regex match on phrases like "N commits land", "exactly N commits",
+     "one commit per checkpoint" with N derivable) and the spec also
+     contains `T` checkpoints whose acceptance criteria require a "Red
+     commit precedes Green commit" or equivalent TDD-sequence pattern. If
+     `N < 2T + (total_CPs - T)`, the Generator will be forced to choose
+     between honoring TDD and honoring the count, and TDD always wins —
+     resulting in avoidable Rule Conflict Notes. Emit `severity: warning`
+     with `suggested_fix: reconcile the Success Criterion count with
+     checkpoint-level TDD requirements — relax the count, drop the
+     TDD-sequence acceptance, or restate the count as a minimum (\`>=\`)`.
 4. **Type accuracy** — is `frontend | backend | fullstack | infrastructure` correctly assigned?
    - **Canonical Type shape audit** — checkpoint metadata should use the
      canonical `- Type: <value>` form. If a checkpoint uses a non-canonical
