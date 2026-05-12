@@ -57,6 +57,17 @@ For each checkpoint evaluate:
    - If the Card is missing or `scout_status` is anything other than
      `complete`, record `Card unavailable - attribution deferred`; do not use
      Card-based tier attribution for this round.
+   - **ambiguous quantifier on cap/limit invariant** — flags acceptance
+     criteria declaring a cap, limit, max-count, or eviction threshold whose
+     subject admits more than one reading, for example "hard cap on file
+     count" where "file" could mean accepted outputs, all regular files,
+     traversed entries, or the union including skipped paths. The spec MUST
+     disambiguate the counting set explicitly (which entries are counted,
+     when they are counted, and whether filtered/skipped/oversized entries
+     still count). Emit `severity: warning` with `suggested_fix: name the
+     counting set and the moment of count (e.g. "accepted outputs at end of
+     run, excluding skipped paths and oversized files") so the Generator and
+     Evaluator share one decidable threshold`.
 3. **Dependencies** — are inter-checkpoint dependencies explicit? Is the ordering correct?
    - **cross-CP artifact ownership conflict** — detects the same artifact
      path, table, index, public symbol, or other named ownership surface being
