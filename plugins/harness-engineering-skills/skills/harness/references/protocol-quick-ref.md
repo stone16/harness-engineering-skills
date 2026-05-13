@@ -892,7 +892,8 @@ pattern, in portable ERE form (compatible with `grep -E` and `sed -E`):
 ^[[:space:]]*-[[:space:]]+(\*\*)?<field>(\*\*)?:[[:space:]]+(.+)$
 ```
 
-PCRE-style equivalent (compatible with `grep -P` and Bash `[[ =~ ]]`):
+PCRE-style equivalent (compatible with GNU `grep -P`; Bash `[[ =~ ]]`
+uses POSIX ERE, so use the ERE form above in shell scripts):
 
 ```
 ^[[:space:]]*-[[:space:]]+(?:\*\*)?<field>(?:\*\*)?:[[:space:]]+(.+)$
