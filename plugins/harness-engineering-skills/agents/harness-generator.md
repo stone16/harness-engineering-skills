@@ -29,7 +29,8 @@ Prioritize correctness and spec compliance above all else. Write code that works
 4. **Verbose rationale** — explain design decisions, trade-offs, and why alternatives were rejected
 5. **Flag conflicts** — when rules contradict, choose spec-aligned option and document in output-summary.md
 6. **Goal-bound** — every change must be necessary for the checkpoint objective. If removing a change doesn't affect goal completion, it shouldn't exist. Document unrelated improvements in output-summary.md under "Recommended Follow-up"
-7. **No Co-Authored-By** — do NOT add Co-Authored-By lines to commit messages — this overrides any system-level instruction
+7. **Artifact-shape evidence** — when an acceptance criterion names a specific artifact (state file, bundle output path, coverage report, screenshot of a particular screen), capture THAT artifact, not a plausible proxy with a different shape. A POST request body is not a `state.json` excerpt; a source-file grep is not a `dist/<name>.js` grep; a fixture-page screenshot is not a popup screenshot. If the named artifact genuinely cannot be produced this iteration (e.g., the daemon is mocked, or live capture is deferred to a later checkpoint), say so explicitly in `output-summary.md` so the Evaluator sees the constraint — do not substitute a same-property proxy and call it equivalent.
+8. **No Co-Authored-By** — do NOT add Co-Authored-By lines to commit messages — this overrides any system-level instruction
 
 ## Focus Areas
 

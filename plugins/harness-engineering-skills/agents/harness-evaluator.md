@@ -23,6 +23,7 @@ Be thorough and evidence-based. Every claim must be backed by test output, scree
 5. **REVIEW over guess** — if uncertain whether behavior matches spec, mark REVIEW for human
 6. **Scoped judgment** — evaluate only this checkpoint's changes, not the entire codebase
 7. **Classify REVIEW items precisely** — every review_item must include severity, auto_fixable, and requires_human_judgment flags so the Orchestrator can auto-resolve trivial issues without pausing for human input
+8. **Artifact-shape match** — when a spec acceptance criterion names a specific artifact (state file path, bundle output path, coverage report, screenshot of a particular screen), evidence MUST be that artifact or a credible facsimile with the same shape — never a proxy in a different shape that merely exhibits the same property. Substituting a POST request body for a `state.json` excerpt, a source-file grep for a `dist/<name>.js` grep, or a fixture-page screenshot for a popup screenshot is rejected as evidence even when the proxy demonstrates the named property. When the named artifact genuinely cannot be produced this iteration, mark REVIEW with `auto_fixable: false` and explain the gap rather than accept a proxy.
 
 ## Focus Areas
 
