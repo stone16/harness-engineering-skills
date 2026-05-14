@@ -71,16 +71,27 @@ For each checkpoint evaluate:
 3. **Dependencies** — are inter-checkpoint dependencies explicit? Is the ordering correct?
    - **cross-CP artifact ownership conflict** — detects the same artifact
      path, table, index, public symbol, or other named ownership surface
-     appearing in two or more checkpoints, **or appearing in both a Success
-     Criterion and a checkpoint acceptance bullet**, without an explicit
-     lifecycle split (create/update/finalize, producer/consumer,
-     migration/use). The check covers Success Criteria entries, checkpoint
-     acceptance bullets, and Files of interest paths. Emit `severity:
-     warning` with `suggested_fix: assign one checkpoint as owner of the
-     artifact lifecycle and make later checkpoints consume or extend it
-     explicitly, or split the artifact into separately named surfaces (e.g.
-     a live capture under one path and a hermetic fixture screenshot under
-     another)`.
+     appearing under **conflicting** requirements across the spec. Two
+     shapes both fire the warning:
+     1. **CP↔CP**: the artifact appears in two or more checkpoint
+        acceptance bullets or Files of interest entries without an explicit
+        lifecycle split (create/update/finalize, producer/consumer,
+        migration/use).
+     2. **SC↔CP**: the artifact appears in both a Success Criterion and a
+        checkpoint acceptance bullet, AND the two requirements are
+        materially incompatible — different content shape (e.g. "live
+        `state.json` capture from production" vs "hermetic popup
+        screenshot"), different production source (live vs fixture vs
+        mock), or different point-in-time (pre-migration vs
+        post-migration). A Success Criterion that simply names the final
+        artifact a CP is owned-by, with no shape/source/timing conflict,
+        is **not** a conflict and emits no warning.
+     Emit `severity: warning` with `suggested_fix: name the conflicting
+     dimension explicitly (shape, source, or timing), then either assign
+     one checkpoint as owner of the artifact lifecycle and make later
+     checkpoints consume or extend it, or split the artifact into
+     separately named surfaces (e.g. a live capture under one path and a
+     hermetic fixture screenshot under another)`.
    - **literal localhost port without override** — detects literal
      `localhost:<well-known-port>` values (`5432`, `5433`, `6379`, `8000`,
      `8080`, `9092`) without an environment-variable override surface such as
@@ -97,17 +108,27 @@ For each checkpoint evaluate:
      approximate and instruct the Generator to resolve the canonical API from
      the installed package/docs before implementation`.
    - **cross-CP commit count vs TDD sequence contradiction** — fires when
-     Success Criteria contains an entry asserting an explicit commit count
-     `N` (regex match on phrases like "N commits land", "exactly N commits",
-     "one commit per checkpoint" with N derivable) and the spec also
-     contains `T` checkpoints whose acceptance criteria require a "Red
-     commit precedes Green commit" or equivalent TDD-sequence pattern. If
-     `N < 2T + (total_CPs - T)`, the Generator will be forced to choose
-     between honoring TDD and honoring the count, and TDD always wins —
-     resulting in avoidable Rule Conflict Notes. Emit `severity: warning`
-     with `suggested_fix: reconcile the Success Criterion count with
-     checkpoint-level TDD requirements — relax the count, drop the
-     TDD-sequence acceptance, or restate the count as a minimum bound`.
+     Success Criteria contains an entry asserting an explicit **exact**
+     commit count `N` and the spec also contains `T` checkpoints whose
+     acceptance criteria require a "Red commit precedes Green commit" or
+     equivalent TDD-sequence pattern. If `N < 2T + (total_CPs - T)`, the
+     Generator will be forced to choose between honoring TDD and honoring
+     the count, and TDD always wins — resulting in avoidable Rule Conflict
+     Notes.
+     - **Exact-count phrasings that fire the warning**: "N commits land",
+       "exactly N commits", "one commit per checkpoint" (with N
+       derivable), "N total commits", "produces N commits".
+     - **Minimum-bound phrasings that do NOT fire** (Generator can satisfy
+       these with `2T + (total_CPs - T)` commits without contradiction):
+       "at least N commits", "N or more commits", "minimum N commits", "≥
+       N commits" / ">= N commits", "no fewer than N commits". When the
+       Success Criterion uses any of these forms, suppress the warning
+       even if `N < 2T + (total_CPs - T)`, because the lower bound is
+       satisfied by the actual commit count.
+     Emit `severity: warning` with `suggested_fix: reconcile the Success
+     Criterion count with checkpoint-level TDD requirements — relax the
+     count, drop the TDD-sequence acceptance, or restate the count as a
+     minimum bound (e.g. "at least N commits land")`.
 4. **Type accuracy** — is `frontend | backend | fullstack | infrastructure` correctly assigned?
    - **Canonical Type shape audit** — checkpoint metadata should use the
      canonical `- Type: <value>` form. If a checkpoint uses a non-canonical
