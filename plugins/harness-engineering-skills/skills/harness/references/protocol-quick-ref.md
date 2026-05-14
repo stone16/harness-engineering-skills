@@ -210,11 +210,18 @@ Sections:
 ### Spec Evaluator pre-execution warnings
 
 The Spec Evaluator emits warning-level concerns for these mechanical
-pre-execution hazards before a Generator starts:
+pre-execution hazards before a Generator starts. Authoritative rule text
+lives in `agents/harness-spec-evaluator.md`; this list is a one-line index
+for planners — keep them mirrored.
 
 - `cross-CP artifact ownership conflict` flags the same artifact path, table,
-  index, public symbol, or other named ownership surface appearing in two or
-  more checkpoints without an explicit lifecycle split. Source: issue #24.
+  index, public symbol, or other named ownership surface appearing under
+  **conflicting** requirements: either across two or more checkpoints without
+  an explicit lifecycle split, or across a Success Criterion and a checkpoint
+  acceptance bullet that are materially incompatible (different shape, source,
+  or timing). A Success Criterion that simply names a CP-owned final artifact
+  with no shape/source/timing conflict is not a conflict. Source: issues #24,
+  #42.
 - `literal localhost port without override` flags literal
   `localhost:<well-known-port>` values (`5432`, `5433`, `6379`, `8000`,
   `8080`, `9092`) that lack an environment-variable override surface or
@@ -224,6 +231,18 @@ pre-execution hazards before a Generator starts:
   will execute without a verified installed-version citation or an explicit
   `approximate / canonical resolution by Generator` annotation. Source: issue
   #16.
+- `ambiguous quantifier on cap/limit invariant` flags acceptance criteria
+  declaring a cap, limit, max-count, or eviction threshold whose subject
+  admits more than one reading (e.g. "hard cap on file count" without naming
+  whether "file" means accepted outputs, all regular files, traversed entries,
+  or the union including skipped paths). The spec must name the counting set
+  and the moment of count. Source: issue #44.
+- `cross-CP commit count vs TDD sequence contradiction` flags a Success
+  Criterion asserting an **exact** commit count `N` (e.g. "N commits land",
+  "exactly N commits") combined with `T` checkpoints requiring a Red→Green
+  TDD sequence when `N < 2T + (total_CPs − T)`. Minimum-bound forms ("at
+  least N", "≥ N", "no fewer than N", "minimum N") are exempt — the lower
+  bound is satisfied by the actual commit count. Source: issue #29.
 
 ---
 
