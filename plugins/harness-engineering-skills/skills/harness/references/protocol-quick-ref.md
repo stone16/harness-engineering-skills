@@ -908,14 +908,20 @@ input line:
 | `- **Type**: backend`  | no (compat)| yes              | warns: normalize to canonical   |
 | `- *Type*: backend`    | no         | no               | error: invalid metadata         |
 
-This is the parser-side default for **all** metadata fields, not just
-`Type`. New fields introduced by checkpoints (for example
-`parallel_group`, `coverage_percent`, future cohort facets) MUST adopt
-the same envelope so a legacy or AI-emitted bold-decorated spec does not
+This is the parser-side default for **all** bullet-shaped metadata
+fields, not just `Type`. New bullet fields introduced by checkpoints
+(for example `parallel_group`, future cohort facets) MUST adopt the same
+envelope so a legacy or AI-emitted bold-decorated spec does not
 silently degrade to a parse miss. The Spec Evaluator continues to warn on
 the decorated form so the human author still gets a normalization hint;
 the parser-side envelope is purely a defensive default, not a license to
 emit the decorated shape.
+
+This envelope is **only** for the bullet-shaped `- field: value` form
+the engine extracts from spec and checkpoint bodies. It is NOT for YAML
+frontmatter keys (e.g. `coverage_percent: 85` inside
+`verification-report.md`'s `---`-fenced header), which are parsed by the
+file-shape grammar and are excluded by the Scope section below.
 
 ### Recurrence history
 
