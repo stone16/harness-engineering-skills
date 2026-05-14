@@ -12,8 +12,11 @@ set -euo pipefail
 #   5. Leading blank lines are stripped.
 #   6. Missing closing "---" fails loud (exit 2) AND writes parse-error YAML.
 #   7. Empty result fails loud.
-#   8. When result is malformed but existing artifact has a valid opener,
-#      preserve the existing artifact and exit 0.
+#   8. When result is malformed but existing artifact has a valid
+#      opener-plus-closer, preserve the existing artifact and exit 0.
+#   9. When result is malformed AND existing artifact has only an opener (no
+#      closing '---'), do NOT preserve — fall through to parse-error.
+#  10. Whitespace-only blank lines after a code fence are stripped.
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 helper="$repo_root/plugins/harness-engineering-skills/skills/harness/scripts/normalize_claude_artifact.py"
@@ -212,5 +215,56 @@ if [[ -f "$out8" ]]; then
   exit 1
 fi
 assert_contains "$workdir/err8.txt" "preserving existing"
+((scenario++))
+
+echo "[$scenario] malformed result + existing artifact missing closing '---' -> parse-error (NOT preserved)"
+in9="$workdir/in9.txt"
+out9="$workdir/out9.txt"
+existing9="$workdir/existing9.txt"
+# Existing artifact has the opener but NO closing '---' — exactly the stale-PASS
+# regression class Hao called out: the engine could otherwise consume an
+# evaluator-invalid file because the previous _has_valid_opening check accepted
+# any first line of '---'.
+cat > "$existing9" <<'EOF'
+---
+verdict: PASS
+notes: stale partial write — missing closing fence
+EOF
+cat > "$in9" <<'EOF'
+Some prose summary instead of frontmatter.
+EOF
+set +e
+run_helper "$in9" "$out9" "$existing9" 2> "$workdir/err9.txt"
+rc=$?
+set -e
+if [[ "$rc" -ne 2 ]]; then
+  echo "scenario $scenario: expected exit code 2 (parse-error, NOT preserve stale partial), got $rc" >&2
+  cat "$workdir/err9.txt" >&2
+  exit 1
+fi
+assert_contains "$out9" "result: parse-error"
+assert_contains "$out9" "agent: test-agent"
+if grep -q "preserving existing" "$workdir/err9.txt"; then
+  echo "scenario $scenario: stderr unexpectedly mentions preservation; existing must not be preserved when malformed" >&2
+  cat "$workdir/err9.txt" >&2
+  exit 1
+fi
+((scenario++))
+
+echo "[$scenario] whitespace-only blank lines after code fence are stripped"
+in10="$workdir/in10.txt"
+out10="$workdir/out10.txt"
+# Fenced artifact where, after the fence, the next line contains only spaces
+# (not a bare newline). `lstrip("\n")` did not handle this; the regex strip
+# must catch it.
+printf '```yaml\n   \n---\nverdict: pass\n---\n```\n' > "$in10"
+run_helper "$in10" "$out10"
+first_line=$(head -n 1 "$out10")
+if [[ "$first_line" != "---" ]]; then
+  echo "scenario $scenario: first line not '---' after fence + whitespace strip (got '$first_line')" >&2
+  cat "$out10" >&2
+  exit 1
+fi
+assert_contains "$out10" "verdict: pass"
 
 echo "claude artifact frontmatter normalization test passed (${scenario} scenarios)"
