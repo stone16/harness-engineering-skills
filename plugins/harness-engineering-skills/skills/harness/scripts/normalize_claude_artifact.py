@@ -36,6 +36,7 @@ import sys
 
 _LEADING_FENCE_RE = re.compile(r"\A```[A-Za-z0-9_+-]*[ \t]*\r?\n")
 _TRAILING_FENCE_RE = re.compile(r"\r?\n```[ \t]*\r?\n?[ \t]*\Z")
+_LEADING_BLANK_LINES_RE = re.compile(r"\A(?:[ \t]*\r?\n)+")
 
 
 def normalize_and_validate(text: str) -> tuple[str, str | None]:
@@ -69,7 +70,7 @@ def normalize_and_validate(text: str) -> tuple[str, str | None]:
     if work.startswith("- ---"):
         work = work[2:]
 
-    work = work.lstrip("\n")
+    work = _LEADING_BLANK_LINES_RE.sub("", work)
 
     lines = work.splitlines()
     if not lines:
@@ -90,12 +91,24 @@ def normalize_and_validate(text: str) -> tuple[str, str | None]:
     return work, None
 
 
-def _has_valid_opening(text: str) -> bool:
-    stripped = text.lstrip()
-    if not stripped:
+def _has_valid_frontmatter(text: str) -> bool:
+    """Check that ``text`` is a valid raw YAML frontmatter artifact.
+
+    Mirrors the contract enforced on newly-emitted results: the first line
+    must be exactly ``---`` (no leading whitespace, no fence, no list-item
+    prefix) and a closing ``---`` line must appear somewhere after the opener.
+
+    A file that only has an opener — for example a stale ``---\\nverdict:
+    PASS\\n`` left over from an interrupted write — is *not* preserved; the
+    fresh malformed result still triggers a parse-error so retro evidence can
+    surface the failure instead of letting an old PASS pass through.
+    """
+    if not text:
         return False
-    first_line = stripped.splitlines()[0].rstrip()
-    return first_line == "---"
+    lines = text.splitlines()
+    if not lines or lines[0].rstrip() != "---":
+        return False
+    return any(line.rstrip() == "---" for line in lines[1:])
 
 
 def _build_parse_error_artifact(
@@ -157,7 +170,7 @@ def _process(
     if existing_file and existing_file.exists():
         existing_text = existing_file.read_text()
 
-    if existing_text.strip() and _has_valid_opening(existing_text):
+    if _has_valid_frontmatter(existing_text):
         sys.stderr.write(
             f"Warning: agent {agent!r} returned non-frontmatter result "
             f"({error}); preserving existing on-disk artifact at {existing_file}\n"
