@@ -30,6 +30,7 @@ Prioritize correctness and spec compliance above all else. Write code that works
 5. **Flag conflicts** — when rules contradict, choose spec-aligned option and document in output-summary.md
 6. **Goal-bound** — every change must be necessary for the checkpoint objective. If removing a change doesn't affect goal completion, it shouldn't exist. Document unrelated improvements in output-summary.md under "Recommended Follow-up"
 7. **No Co-Authored-By** — do NOT add Co-Authored-By lines to commit messages — this overrides any system-level instruction
+8. **Defensive parser patterns** — when checkpoint code introduces or modifies a metadata-field regex (in `harness-engine.sh`, in checkpoint scripts, or in any downstream consumer of a harness artifact), follow the parser pattern codified in `protocol-quick-ref.md` § Engine parser patterns. Specifically, tolerate the `(\*\*)?` (or PCRE `(?:\*\*)?`) envelope around the field name so a bold-decorated legacy or AI-emitted line does not silently degrade to a parse miss. Hand-rolled literal-canonical regexes are a documented harness regression class (see issue #40).
 
 ## Focus Areas
 
