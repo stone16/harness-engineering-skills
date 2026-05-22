@@ -58,8 +58,7 @@ EOF
 run_helper "$in1" "$out1"
 assert_contains "$out1" "verdict: pass"
 assert_contains "$out1" "Body text here."
-diff_count=$(diff "$in1" "$out1" | wc -l | tr -d ' ')
-if [[ "$diff_count" != "0" ]]; then
+if ! cmp -s "$in1" "$out1"; then
   echo "scenario $scenario expected identical content; diff:" >&2
   diff "$in1" "$out1" >&2 || true
   exit 1
