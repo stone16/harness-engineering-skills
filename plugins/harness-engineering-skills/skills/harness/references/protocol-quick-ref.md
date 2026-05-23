@@ -575,6 +575,8 @@ coverage_percent: <number or "N/A">
 
 The `coverage_percent` field is **parsed by the engine** in `pass-full-verify`. For backend/infra/fullstack tasks, the engine will PHASE_BLOCK if this value is below the configured threshold (default 85%). Set to `N/A` for frontend-only tasks where coverage is not measured.
 
+**Coverage-measurement gate** (`harness-evaluator.md` Principle 9): when the task includes a `backend`, `infrastructure`, or `fullstack` checkpoint OR the spec explicitly requires measured coverage, the Evaluator MUST emit a numeric `coverage_percent`. If coverage tooling is absent, the Evaluator's verdict MUST be `FAIL` with the missing tooling recorded as a hard failure — qualitative assessment ("test density consistent with 85%+") is not a substitute for measurement. Only frontend-only tasks with no spec coverage requirement may use `N/A`. Source: issue #48.
+
 Sections:
 - **Hard Failures**: list of failed checks with command, exit code, error output
 - **Soft Warnings**: list of non-blocking issues (e.g., "README.md missing test instructions"). Note: required test coverage below the configured/spec threshold on backend/infrastructure/fullstack checkpoints is a **hard failure**, not a soft warning. Frontend-only checkpoints are exempt from coverage thresholds unless the spec explicitly requires coverage.
