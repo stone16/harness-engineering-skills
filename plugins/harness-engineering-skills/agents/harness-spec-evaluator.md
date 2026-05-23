@@ -109,12 +109,21 @@ For each checkpoint evaluate:
      the installed package/docs before implementation`.
    - **cross-CP commit count vs TDD sequence contradiction** — fires when
      Success Criteria contains an entry asserting an explicit **exact**
-     commit count `N` and the spec also contains `T` checkpoints whose
-     acceptance criteria require a "Red commit precedes Green commit" or
-     equivalent TDD-sequence pattern. If `N < 2T + (total_CPs - T)`, the
-     Generator will be forced to choose between honoring TDD and honoring
-     the count, and TDD always wins — resulting in avoidable Rule Conflict
-     Notes.
+     commit count `N` and the spec also contains `T` checkpoints that
+     require a Red→Green TDD sequence. A checkpoint counts toward `T` if
+     **either** of the following is true:
+     1. its acceptance criteria contain "Red commit precedes Green
+        commit" or an equivalent TDD-sequence phrase, **or**
+     2. its `Type` is `backend`, `infrastructure`, or `fullstack` — these
+        Types mandate TDD via the protocol (see
+        `harness-generator.md` Principle 2 "Type-aware testing" and
+        `protocol-quick-ref.md` §full-verify gate's "TDD Commit
+        Sequence" entry), even when the acceptance bullets do not
+        restate the requirement.
+
+     If `N < 2T + (total_CPs - T)`, the Generator will be forced to
+     choose between honoring TDD and honoring the count, and TDD always
+     wins — resulting in avoidable Rule Conflict Notes.
      - **Exact-count phrasings that fire the warning**: "N commits land",
        "exactly N commits", "one commit per checkpoint" (with N
        derivable), "N total commits", "produces N commits".
