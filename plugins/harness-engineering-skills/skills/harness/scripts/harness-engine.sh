@@ -530,6 +530,21 @@ import sys
 path = pathlib.Path(sys.argv[1])
 text = path.read_text() if path.exists() else ""
 
+# Refuse to read a verdict from a parse-error artifact. The normalizer
+# (plugins/.../normalize_claude_artifact.py) writes
+# `result: parse-error` in the frontmatter and preserves the agent's raw
+# bytes verbatim in an indented body for retro evidence. Without this
+# short-circuit the patterns below would happily match an indented
+# `  verdict: PASS` line inside that body and let a malformed agent
+# output silently pass the gate.
+frontmatter_match = re.match(r"\A---\r?\n(.*?)\r?\n---\r?\n", text, re.DOTALL)
+if frontmatter_match and re.search(
+    r"^result\s*:\s*parse-error\s*$",
+    frontmatter_match.group(1),
+    re.MULTILINE,
+):
+    sys.exit(0)
+
 patterns = [
     r"(?im)^\s*verdict\s*:\s*(PASS_WITH_WARNINGS|PASS|FAIL|REVIEW)\s*$",
     r"(?im)^\s*[-*]?\s*\*\*result\*\*\s*:\s*(PASS_WITH_WARNINGS|PASS|FAIL|REVIEW)\b",

@@ -141,15 +141,26 @@ parse_claude_json() {
   local log_file="$1"
   local output_file="$2"
   local session_id_file="${3:-}"
+  local agent_name="${4:-claude}"
 
-  python3 - "$log_file" "$output_file" "$session_id_file" <<'PY'
+  local raw_result_file is_error_file existing_artifact_file
+  raw_result_file="$(mktemp "${TMPDIR:-/tmp}/harness-claude-result.XXXXXX")"
+  is_error_file="$(mktemp "${TMPDIR:-/tmp}/harness-claude-is-error.XXXXXX")"
+  existing_artifact_file=""
+  if [[ -f "$output_file" ]]; then
+    existing_artifact_file="$(mktemp "${TMPDIR:-/tmp}/harness-claude-existing.XXXXXX")"
+    cp "$output_file" "$existing_artifact_file"
+  fi
+
+  python3 - "$log_file" "$raw_result_file" "${session_id_file:-}" "$is_error_file" <<'PY'
 import json
 import pathlib
 import sys
 
 log_path = pathlib.Path(sys.argv[1])
-output_path = pathlib.Path(sys.argv[2])
+raw_result_path = pathlib.Path(sys.argv[2])
 session_id_path = pathlib.Path(sys.argv[3]) if len(sys.argv) > 3 and sys.argv[3] else None
+is_error_path = pathlib.Path(sys.argv[4])
 
 text = log_path.read_text()
 try:
@@ -182,26 +193,53 @@ for event in events:
 if result_text is None:
     raise SystemExit("Error: Claude agent output did not include a result payload")
 
-if output_path.exists():
-    existing_text = output_path.read_text()
-else:
-    existing_text = ""
-
-if existing_text.strip() and not result_text.lstrip().startswith("---"):
-    # Some Claude agents write the requested artifact directly and return a
-    # prose summary as their final result. Preserve the structured artifact in
-    # that case; otherwise the harness gate loses its frontmatter.
-    pass
-else:
-    output_path.write_text(result_text)
+raw_result_path.write_text(result_text)
+is_error_path.write_text("1" if is_error else "0")
 
 if session_id_path:
     session_id_path.write_text(f"{session_id}\n")
-
-if is_error:
-    print(f"Error: Claude agent returned an error: {result_text}", file=sys.stderr)
-    sys.exit(1)
 PY
+  local extract_rc=$?
+
+  if [[ "$extract_rc" -ne 0 ]]; then
+    rm -f "$raw_result_file" "$is_error_file"
+    [[ -n "$existing_artifact_file" ]] && rm -f "$existing_artifact_file"
+    return "$extract_rc"
+  fi
+
+  # Normalize and validate the raw result text. The normalizer either writes a
+  # frontmatter-compliant artifact to "$output_file", preserves an existing
+  # valid on-disk artifact, or writes a structured parse-error YAML and exits
+  # non-zero. Behavior is identical for Claude review-role artifacts emitted
+  # via stream-json — the helper centralizes the contract so future host
+  # adapters (Codex, Gemini) share one implementation.
+  local normalizer="$SCRIPT_DIR/normalize_claude_artifact.py"
+  local normalize_args=(
+    --agent "$agent_name"
+    --result-file "$raw_result_file"
+    --output-file "$output_file"
+  )
+  if [[ -n "$existing_artifact_file" ]]; then
+    normalize_args+=(--existing-file "$existing_artifact_file")
+  fi
+
+  python3 "$normalizer" "${normalize_args[@]}"
+  local normalize_rc=$?
+
+  local is_error="0"
+  if [[ -f "$is_error_file" ]]; then
+    is_error="$(<"$is_error_file")"
+  fi
+
+  rm -f "$raw_result_file" "$is_error_file"
+  [[ -n "$existing_artifact_file" ]] && rm -f "$existing_artifact_file"
+
+  if [[ "$is_error" == "1" ]]; then
+    echo "Error: Claude agent returned an error (is_error=true in result event)" >&2
+    return 1
+  fi
+
+  return "$normalize_rc"
 }
 
 # Stay in the caller's working directory (the user's project).
@@ -264,4 +302,4 @@ if [[ $exit_code -ne 0 ]]; then
   exit "$exit_code"
 fi
 
-parse_claude_json "$RUN_LOG" "$OUTPUT_FILE" "$SESSION_ID_FILE"
+parse_claude_json "$RUN_LOG" "$OUTPUT_FILE" "$SESSION_ID_FILE" "$AGENT_NAME"
