@@ -247,6 +247,19 @@ for planners — keep them mirrored.
   Minimum-bound forms ("at least N", "≥ N", "no fewer than N",
   "minimum N") are exempt — the lower bound is satisfied by the actual
   commit count. Source: issue #29.
+- `concurrency-primitive completeness audit` flags specs that introduce
+  or modify a lock/queue/dispatch/fork-join/scheduler primitive
+  (keywords: `lock`, `flock`, `mutex`, `cohort`, `queue`, `dispatch`,
+  `fork`, `parallel`, `concurrent`, `worker`, `actor`) without naming
+  both producer and consumer CPs for each of four system invariants:
+  pass-gate consumer for every written artifact; attribution windows
+  covering full multi-step operations; peer context through
+  `assemble-context`; public CLI verb for every Generator-facing
+  contract surface. Source: issue #39.
+- `concurrency-primitive cross-model review requirement` fires when the
+  completeness audit fires AND resolved config has
+  `cross_model_review: false`; blocks spec lock until config is flipped
+  or an explicit waiver is declared. Source: issue #39.
 
 ---
 
