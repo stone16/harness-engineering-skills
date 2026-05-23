@@ -14,11 +14,13 @@ assert_contains() {
 }
 
 assert_contains "$spec_evaluator" "parallel_group_safety"
-assert_contains "$spec_evaluator" "Files of interest completeness audit"
-assert_contains "$spec_evaluator" "Type compatibility audit"
-assert_contains "$spec_evaluator" "parallel_group canonical shape audit"
+assert_contains "$spec_evaluator" "Files of interest completeness"
+assert_contains "$spec_evaluator" "Type compatibility"
+assert_contains "$spec_evaluator" "parallel_group\` canonical shape"
 assert_contains "$spec_evaluator" "skipping paths inside fenced code blocks and inline backticked spans"
 assert_contains "$spec_evaluator" "severity: warning"
-assert_contains "$spec_evaluator" "suggested_fix: extend Files of interest to include any prose-mentioned paths, split the cohort along the Type boundary, or normalize the parallel_group value to a single uppercase letter"
+assert_contains "$spec_evaluator" "suggested_fix: extend Files of interest"
+assert_contains "$spec_evaluator" "split the cohort along the Type boundary"
+assert_contains "$spec_evaluator" "normalize parallel_group to a single uppercase letter"
 
 echo "spec-evaluator parallel-group safety test passed"
