@@ -85,6 +85,18 @@ fields in the YAML frontmatter when you can determine them (see
 Fields are optional and engine-ignored. Omit any value you cannot determine —
 never fabricate a placeholder.
 
+**Optional `## Size Waiver Rationale` section** (issue #27): if you know
+this iter's diff will exceed the 3× magnitude threshold for intentional
+reasons (e.g. the spec merged two former checkpoints, or scope was
+deliberately expanded with operator approval), include this section in
+output-summary.md. Required content: actual vs threshold overage,
+why it's intentional (cite spec line or operator decision), and
+confirmation that no off-scope files were introduced. The Evaluator
+reads this during the goal-relevance audit and — if all changed file
+groups also map to spec scope — emits `verdict: PASS` with
+`magnitude_advisory: true` instead of the usual REVIEW. Omitting this
+section on an oversized diff keeps the Evaluator on the REVIEW path.
+
 ## Boundaries
 
 **Will:**

@@ -454,12 +454,24 @@ generator_completed_at: <ISO-8601 timestamp when this iter's commits landed>
 ---
 ```
 
-Sections: What Was Done (+ rationale), Files Modified, Git Commits (SHAs + messages), Rule Conflict Notes (empty if none), Notes for Evaluator.
+Sections: What Was Done (+ rationale), Files Modified, Git Commits (SHAs + messages), Rule Conflict Notes (empty if none), Notes for Evaluator. Optional: `## Size Waiver Rationale` (see below).
 
 The five `generator_*` fields are optional. The engine ignores them;
 existing summaries without them remain valid. See
 `docs/adr/0005-record-generator-and-planner-host-model.md` for the
 rationale.
+
+**Optional `## Size Waiver Rationale` section** (issue #27): when the
+Generator knows in advance that the checkpoint diff will exceed the
+3× magnitude threshold for intentional reasons (e.g. spec merged two
+former checkpoints, or scope was deliberately expanded with operator
+approval), include this section in output-summary.md. The Evaluator
+reads it during the goal-relevance audit and — if all changed file
+groups also map to spec scope — emits `verdict: PASS` with
+`magnitude_advisory: true` instead of REVIEW. Missing rationale on an
+oversized diff stays REVIEW. Required content: the actual vs threshold
+overage, why it's intentional (cite spec line or operator decision),
+and confirmation that no off-scope files were introduced.
 
 ---
 
@@ -478,16 +490,24 @@ evaluator_session_id: <session id from evaluator agent>
 # generator_model and planner_model. Engine ignores; older evaluations
 # without it remain valid.
 evaluator_model: <e.g., claude-opus-4-7, gpt-5.5>
+# Optional magnitude advisory (see issue #27). Set to true when verdict is
+# PASS but the magnitude check was exceeded AND the goal-relevance audit
+# passed AND a Size Waiver Rationale was present in output-summary.md.
+# Engine ignores; the field is informational so retro/review can see that
+# an overrun was reviewed and accepted rather than missed.
+magnitude_advisory: true | false
 ---
 ```
 
 The `verdict` frontmatter is parsed by `$ENGINE pass-checkpoint`. It must match the Verdict section. A checkpoint cannot pass unless the latest iteration's `evaluation.md` has `verdict: PASS`, and the same iteration contains `evaluator-session-id.txt` with a session id that was not used by any prior checkpoint.
 
+When `magnitude_advisory: true`, evaluation.md MUST also contain a `## Magnitude Advisory` section recording: actual insertions vs threshold, actual file count vs threshold, the goal-relevance audit result (every file group's spec mapping), and the Size Waiver Rationale text from output-summary.md. This makes the overrun-accepted decision auditable in retro without having to cross-reference output-summary.md.
+
 ### Tier 1: Deterministic Checks (MANDATORY)
 
 Each section has: ran, passed/results, errors/failures, **evidence** (path in evidence/).
 
-- **Magnitude Check**: Read `effort_estimate` from context.md frontmatter. Compute actual insertions (`git diff --stat baseline_sha..HEAD | tail -1`) and file count (`git diff --name-only baseline_sha..HEAD | wc -l`). Compare against thresholds: S=50/3, M=150/8, L=300/12 files. If actual exceeds 3× estimate on either dimension → trigger REVIEW with focus on goal relevance. Evidence: actual vs expected numbers.
+- **Magnitude Check**: Read `effort_estimate` from context.md frontmatter. Compute actual insertions (`git diff --stat baseline_sha..HEAD | tail -1`) and file count (`git diff --name-only baseline_sha..HEAD | wc -l`). Compare against thresholds: S=50/3, M=150/8, L=300/12 files. If actual exceeds 3× estimate on either dimension → run goal-relevance audit. **Outcome A** (every file group maps to spec AND output-summary.md contains a `## Size Waiver Rationale`): emit `verdict: PASS` with `magnitude_advisory: true` in frontmatter plus a `## Magnitude Advisory` section in evaluation.md (actual vs threshold + audit result + waiver text). **Outcome B** (off-scope files OR no waiver rationale): trigger REVIEW with goal-relevance focus. Issue #27. Evidence: actual vs expected numbers in both outcomes.
 - **Tests**: ran, passed (N/total), failed_tests, evidence
 - **Test Coverage** (backend/infrastructure/fullstack ONLY, plus any frontend checkpoint whose spec explicitly requires coverage): ran, coverage_percent (project-wide or checkpoint-scoped as specified), threshold (from `.harness/config.json` `coverage_threshold`, default 85, or stricter spec value), passed (coverage ≥ threshold), evidence. **FAIL if required coverage is unmeasured or below threshold** — hard gate. Measured using the project's configured coverage tool. Skip for `Type: frontend` checkpoints only when the spec does not require frontend coverage.
 - **TDD Commit Sequence** (backend/infrastructure/fullstack ONLY): verified (Red commit with failing tests exists before Green commit with passing implementation), evidence (commit SHAs showing test-first order). Skip for `Type: frontend` checkpoints.
