@@ -27,7 +27,7 @@ Be thorough and evidence-based. Every claim must be backed by test output, scree
 ## Focus Areas
 
 - **Tier 1 (deterministic)**: magnitude check, tests, type check, linter, browser verification, API verification
-- **Tier 2 (LLM review)**: edge cases, concurrency, security, performance, logic correctness, goal relevance, **fault-path probe for external-input code paths** (see Key Actions step 4)
+- **Tier 2 (LLM review)**: edge cases, concurrency, security, performance, logic correctness, goal relevance, **fault-path probe for external-input code paths** (see Key Actions step 4), **contract-preservation probe for parser/regex/validator changes** (see Key Actions step 4b)
 
 ## Key Actions
 
@@ -39,6 +39,15 @@ Be thorough and evidence-based. Every claim must be backed by test output, scree
    - An evaluator-led simulation: run the code path with a hand-crafted malformed fixture and document stdout/stderr/exit code in `evaluation.md` under a **"Fault-path probe"** heading.
 
    If the CP has **no** external input (pure computation, compile-time constants), state that explicitly in `evaluation.md` with one line (e.g. `Fault-path probe: N/A — pure computation`) so reviewers see the question was asked and answered. Specifically for atomic-writer patterns (`mktemp` + `mv`), verify the tempfile sits on the same filesystem as the target — a naked `mktemp` (defaults to `$TMPDIR`) produces a cross-fs `mv` that degrades to non-atomic copy+unlink.
+4b. **Contract-preservation probe is mandatory for parser/regex/validator/schema changes.** If the checkpoint modifies any function whose contract includes "must reject input X" or "must accept input Y" (URL validators, regex matchers, grammar parsers, JSON schemas, type guards, security policies, format normalisers), step 4's malformed-input probe is **not sufficient**. The Tier 2 review MUST also include a corpus-based probe documented under a **"Contract-preservation probe"** heading in `evaluation.md`:
+
+   - **Must-reject corpus** — enumerate ≥ 5 inputs the function should still reject after the change. Run the modified code against each. Confirm each is rejected with the expected error mode. At least 2 of the 5 MUST be edge cases the spec did not explicitly mention (e.g. the standard's negative examples, historical bug regressions, adversarial near-miss strings).
+   - **Must-accept corpus** — enumerate ≥ 10 inputs the function should still accept after the change. Run the modified code against each. Confirm each is accepted. The corpus MUST be intentionally diverse beyond what the spec mentions: include characters/forms the relevant standard explicitly permits (RFC, BNF, format spec), legitimate edge cases, and the boundary between "valid" and "invalid". Self-generated "looks reasonable" examples from the Generator's perspective are insufficient — they encode the same prior that produced the patch.
+   - **Mine the upstream test suite first.** Before generating a corpus, search the host repo for existing test files that exercise the modified function (`grep -rn 'URLValidator\|test_url' tests/`). Their existing positive/negative examples are ground truth, not LLM imagination. Cite the test file:line in `evaluation.md` for each corpus entry that came from upstream tests.
+
+   If the CP makes no such change (pure refactor, code organisation, infra config), state that explicitly with one line (e.g. `Contract-preservation probe: N/A — pure refactor`).
+
+   **Why this is non-optional**: cross-model peer review (review-loop with a Codex or Gemini peer) does **not** reliably catch over-restrictive or over-permissive contract changes. Both Claude and Codex share the same prior toward "optimise the positive cases the spec called out", so adding a different-vendor reviewer doesn't change the outcome — the corpus must be explicit at probe time. See `stone16/swe-bench-harness-eval/EXPERIMENT_AB.md` for the empirical evidence (3-instance A/B test, 0/3 flipped despite Codex peer; only the two breakthroughs that DID work resolved instances no public agent solved).
 5. Write evaluation.md per protocol format
 6. Set verdict: PASS / FAIL / REVIEW
 7. **If REVIEW**: classify each review_item with structured fields:
