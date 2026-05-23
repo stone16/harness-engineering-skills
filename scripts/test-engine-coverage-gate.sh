@@ -247,4 +247,44 @@ write_report "$task_dir/full-verify" "coverage_percent: null"
 out="$(run_pass_full_verify "$repo")"
 assert_phase_blocked_with "$out" "coverage_percent is 'null'"
 
+# ── Scenario 9: case-typo `- Type: Backend` + null coverage → FAIL (case-insensitive) ──
+# Regression for codex-connector PR #52 review. Strict-lowercase regex would
+# not match `Backend`, both backend_cp_count and frontend_cp_count would be 0,
+# frontend_only would be false, and the gate's `if` would not fire. Combined
+# with the `|| echo 0` multi-line bug, this silently skipped enforcement.
+scenario "Type:Backend (capital B typo) + null coverage → PHASE_BLOCKED (case-insensitive)"
+repo="$tmpdir/s9"
+task_dir="$(setup_full_verify_state "$repo")"
+write_spec "$task_dir" "
+### Checkpoint 01: api
+- Type: Backend
+- Scope: x
+- Acceptance criteria: y
+"
+write_report "$task_dir/full-verify" "coverage_percent: null"
+out="$(run_pass_full_verify "$repo")"
+assert_phase_blocked_with "$out" "coverage_percent is 'null'"
+
+# ── Scenario 10: zero Type: lines must not trigger ((…)) syntax errors ──
+# Regression for codex-connector PR #52: a spec with NO Type lines previously
+# made backend_cp_count="0\n0" via grep+`|| echo 0`, which triggered a `((…))`
+# syntax error AND silently treated the count as zero. After the fix the
+# count is a clean 0 and arithmetic is safe.
+scenario "spec with zero Type: lines does not leak ((…)) syntax errors to stderr"
+repo="$tmpdir/s10"
+task_dir="$(setup_full_verify_state "$repo")"
+write_spec "$task_dir" "
+### Checkpoint 01: api
+- Scope: x
+- Acceptance criteria: y
+"
+write_report "$task_dir/full-verify" "coverage_percent: null"
+stderr_file="$tmpdir/s10.stderr"
+(cd "$repo" && "$engine" pass-full-verify --task-id cov-gate-test 2>"$stderr_file" >/dev/null) || true
+if grep -Fq 'syntax error in expression' "$stderr_file"; then
+  echo "FAIL: bash arithmetic syntax error leaked to stderr — multi-line count regression?" >&2
+  cat "$stderr_file" >&2
+  exit 1
+fi
+
 echo "pass-full-verify coverage gate test passed ($scenarios_run scenarios)"

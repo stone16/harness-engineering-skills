@@ -1790,9 +1790,19 @@ cmd_pass_full_verify() {
   local frontend_cp_count=0
   if [[ -f "$spec_file" ]]; then
     # Canonical and compat Type shapes; bullet-anchored to avoid prose matches.
-    backend_cp_count=$(grep -cE '^- (\*\*)?Type(\*\*)?:[[:space:]]*(backend|infrastructure|fullstack)\b' "$spec_file" 2>/dev/null || echo 0)
-    frontend_cp_count=$(grep -cE '^- (\*\*)?Type(\*\*)?:[[:space:]]*frontend\b' "$spec_file" 2>/dev/null || echo 0)
-    total_cp_count=$(grep -cE '^### Checkpoint [0-9]+:' "$spec_file" 2>/dev/null || echo 0)
+    # Case-insensitive so a `- Type: Backend` typo still classifies the CP
+    # rather than silently falling through both branches.
+    # Use `|| true` (not `|| echo 0`) — `grep -c` already prints "0" on no
+    # matches, so `|| echo 0` would produce a two-line `"0\n0"` value that
+    # triggers `((…))` syntax errors and silently treats the count as zero.
+    backend_cp_count=$(grep -ciE '^- (\*\*)?Type(\*\*)?:[[:space:]]*(backend|infrastructure|fullstack)\b' "$spec_file" 2>/dev/null || true)
+    frontend_cp_count=$(grep -ciE '^- (\*\*)?Type(\*\*)?:[[:space:]]*frontend\b' "$spec_file" 2>/dev/null || true)
+    total_cp_count=$(grep -cE '^### Checkpoint [0-9]+:' "$spec_file" 2>/dev/null || true)
+    # Guard against the edge case where grep exits before printing (e.g. file
+    # unreadable) — leave the value at 0 rather than empty so `((…))` is safe.
+    backend_cp_count=${backend_cp_count:-0}
+    frontend_cp_count=${frontend_cp_count:-0}
+    total_cp_count=${total_cp_count:-0}
   fi
   local frontend_only="false"
   if (( total_cp_count > 0 && frontend_cp_count == total_cp_count )); then
