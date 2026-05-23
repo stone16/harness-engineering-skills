@@ -1769,16 +1769,47 @@ cmd_pass_full_verify() {
   fi
 
   # ── Coverage gate: enforce threshold for backend/infra/fullstack tasks ──
+  #
+  # Detection precedence (issue #35):
+  #   1. Count anchored `- Type: <value>` lines per checkpoint (canonical
+  #      shape + the `**Type**` compat shape from protocol-quick-ref).
+  #      Broad-grep keyword scans against spec prose are too noisy — a spec
+  #      saying "preserve all existing backend wiring" must not trip the gate.
+  #   2. The gate enforces ONLY when at least one CP has Type backend,
+  #      infrastructure, or fullstack. Frontend-only tasks are exempt.
+  #
+  # Null-coverage handling (issue #35):
+  #   - `coverage_percent: null` (or missing/empty) on a frontend-only task
+  #     is the canonical exempt form — pass through silently.
+  #   - `null`/missing/empty on a non-frontend-only task is a hard fail.
+  #   - Non-numeric non-null values are a hard fail (would crash arithmetic).
   local spec_file
   spec_file="$(harness_dir)/spec.md"
-  local has_backend_work="false"
+  local backend_cp_count=0
+  local total_cp_count=0
+  local frontend_cp_count=0
   if [[ -f "$spec_file" ]]; then
-    if grep -qi 'Type.*backend\|Type.*infrastructure\|Type.*fullstack' "$spec_file"; then
-      has_backend_work="true"
-    fi
+    # Canonical and compat Type shapes; bullet-anchored to avoid prose matches.
+    # Case-insensitive so a `- Type: Backend` typo still classifies the CP
+    # rather than silently falling through both branches.
+    # Use `|| true` (not `|| echo 0`) — `grep -c` already prints "0" on no
+    # matches, so `|| echo 0` would produce a two-line `"0\n0"` value that
+    # triggers `((…))` syntax errors and silently treats the count as zero.
+    backend_cp_count=$(grep -ciE '^- (\*\*)?Type(\*\*)?:[[:space:]]*(backend|infrastructure|fullstack)\b' "$spec_file" 2>/dev/null || true)
+    frontend_cp_count=$(grep -ciE '^- (\*\*)?Type(\*\*)?:[[:space:]]*frontend\b' "$spec_file" 2>/dev/null || true)
+    total_cp_count=$(grep -cE '^### Checkpoint [0-9]+:' "$spec_file" 2>/dev/null || true)
+    # Guard against the edge case where grep exits before printing (e.g. file
+    # unreadable) — leave the value at 0 rather than empty so `((…))` is safe.
+    backend_cp_count=${backend_cp_count:-0}
+    frontend_cp_count=${frontend_cp_count:-0}
+    total_cp_count=${total_cp_count:-0}
+  fi
+  local frontend_only="false"
+  if (( total_cp_count > 0 && frontend_cp_count == total_cp_count )); then
+    frontend_only="true"
   fi
 
-  if [[ "$has_backend_work" == "true" ]]; then
+  if (( backend_cp_count > 0 )); then
     # Read coverage_threshold from config (default 85)
     local threshold="$DEFAULT_COVERAGE_THRESHOLD"
     local config_file=".harness/config.json"
@@ -1792,10 +1823,18 @@ cmd_pass_full_verify() {
     local coverage
     coverage=$(grep -m1 '^coverage_percent:' "$report" 2>/dev/null | sed 's/coverage_percent:[[:space:]]*//' | tr -d '%')
 
-    if [[ -z "$coverage" ]]; then
+    if [[ -z "$coverage" || "$coverage" == "null" || "$coverage" == "N/A" ]]; then
       echo "PHASE_BLOCKED" >&2
-      echo "REASON=Backend/infra/fullstack work detected but verification-report.md missing coverage_percent field" >&2
-      echo "NEXT_STEP=Re-run full-verify with coverage reporting enabled. Add coverage_percent: <N> to frontmatter." >&2
+      echo "REASON=Backend/infra/fullstack work detected but verification-report.md coverage_percent is '${coverage:-<missing>}' — measured value required" >&2
+      echo "NEXT_STEP=Re-run full-verify with coverage reporting enabled. Add coverage_percent: <N> to frontmatter (N/A is only valid for frontend-only tasks)." >&2
+      exit 1
+    fi
+
+    # Numeric format check (guards arithmetic against non-numeric input)
+    if ! [[ "$coverage" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+      echo "PHASE_BLOCKED" >&2
+      echo "REASON=coverage_percent value '${coverage}' is not numeric (expected a number or 'N/A' on frontend-only tasks)" >&2
+      echo "NEXT_STEP=Set coverage_percent to a measured number (e.g. 87.5) in verification-report.md frontmatter" >&2
       exit 1
     fi
 

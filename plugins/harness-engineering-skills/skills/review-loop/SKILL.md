@@ -214,10 +214,19 @@ For each accepted finding:
 ### Step 2.3: Checkpoint commit
 
 ```bash
-git add -A && git commit -m "review-loop: changes from round {N}" --allow-empty
+git commit -am "review-loop: changes from round {N}" --allow-empty
 ```
 
-The `--allow-empty` flag ensures rounds where the host agent only rejects findings (no code changes) don't fail.
+**Scoped, not broad** (issue #36): `git commit -am` stages
+tracked-modified files only. Do NOT use `git add -A` — it sweeps every
+untracked file in the workspace (including `.harness/` scratch from
+prior or parallel tasks) onto the feature branch, poisoning the diff
+the peer reviews. If your round's accepted-fix work creates a genuinely
+new file that belongs on the branch, `git add <path>` it explicitly
+before this checkpoint commit.
+
+The `--allow-empty` flag ensures rounds where the host agent only
+rejects findings (no code changes) don't fail.
 
 ### Step 2.4: Update rounds.json
 
