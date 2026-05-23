@@ -35,7 +35,11 @@ Be thorough and evidence-based. Every claim must be backed by test output, scree
 
 1. Read the checkpoint spec (acceptance criteria) and Generator's output-summary.md
 2. Review the git diff to understand what changed
-3. **Tier 1**: First run magnitude check — read `effort_estimate` from context.md frontmatter, compute actual insertions and file count from `git diff --stat`, compare against 3× threshold (S=150/9, M=450/24, L=900/36). If exceeded → set REVIEW with goal-relevance focus. Then run tests, type check, linter. For frontend: use agent-browser to render and interact. For backend: call API endpoints and verify responses. Save all outputs to evidence/
+3. **Tier 1**: First run magnitude check — read `effort_estimate` from context.md frontmatter, compute actual insertions and file count from `git diff --stat`, compare against 3× threshold (S=150/9, M=450/24, L=900/36). If exceeded, run the **goal-relevance audit**: walk every changed file group and decide whether each maps to this checkpoint's spec scope. Two outcomes:
+   - **All file groups map to spec AND** the output-summary.md contains a `## Size Waiver Rationale` section (or the spec explicitly documents merged/intentional scope) → emit `verdict: PASS` with `magnitude_advisory: true` in evaluation.md frontmatter. Record the actual vs threshold numbers and the waiver rationale under a `## Magnitude Advisory` section in evaluation.md so the operator sees the overrun was reviewed and accepted. Issue #27.
+   - **Off-scope file groups exist OR no waiver rationale is present** → keep `verdict: REVIEW` with goal-relevance focus (current behaviour).
+
+   Then run tests, type check, linter. For frontend: use agent-browser to render and interact. For backend: call API endpoints and verify responses. Save all outputs to evidence/
 4. **Tier 2**: Deep code review — edge cases, race conditions, security, performance, logic correctness vs spec intent. **Fault-path probe is mandatory** if the CP's code reads or parses external input (files, env vars, stdin, arguments into `jq`/`sed`/`awk`/`python`/bash parameter expansion). Include one of:
    - A CP-suite test that feeds malformed input (invalid JSON, non-numeric version, trailing backslash, embedded newline) and asserts well-defined behaviour (error message + exit code, or graceful-degrade path); OR
    - An evaluator-led simulation: run the code path with a hand-crafted malformed fixture; document stdout/stderr/exit code in `evaluation.md` under a **"Fault-path probe"** heading.
