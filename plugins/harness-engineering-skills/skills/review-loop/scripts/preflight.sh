@@ -206,9 +206,37 @@ cat > "$SESSION_DIR/rounds.json" << ENDJSON
 }
 ENDJSON
 
-# --- Step 0.8: Checkpoint commit ---
+# --- Step 0.8: Checkpoint commit (scoped, not broad) ---
+#
+# Issue #36: `git add -A` sweeps every untracked file in the workspace
+# onto the feature branch, including .harness/ scratch from prior or
+# parallel tasks. The peer reviews TARGET_FILES (tracked diff) but the
+# branch under review can carry far more — defeating the cross-model
+# gate. Default the checkpoint commit to TRACKED-MODIFIED only via
+# `git commit -am`; the .gitignore line we may have added in step 0.6
+# is staged explicitly. Untracked files the operator genuinely wants
+# on the branch must be `git add`-ed before invoking review-loop.
+#
+# As a courtesy, list any untracked workspace files (excluding the
+# known scratch dirs) on stderr so the operator notices what is being
+# left behind.
 if [[ "$READ_ONLY" != "true" ]]; then
-  git add -A && git commit -m "review-loop: checkpoint before round 1" --allow-empty 2>/dev/null
+  if [[ "$GITIGNORE_MODIFIED" == "true" ]]; then
+    git add .gitignore 2>/dev/null || true
+  fi
+  # Surface unexpected untracked paths so the operator sees what is
+  # being intentionally left out of the checkpoint commit.
+  UNTRACKED_OUTSIDE_SCRATCH="$(git ls-files --others --exclude-standard 2>/dev/null \
+    | grep -Ev '^(\.harness/|\.review-loop/|nexus_data/|tmp/|node_modules/)' || true)"
+  if [[ -n "$UNTRACKED_OUTSIDE_SCRATCH" ]]; then
+    echo "Warning: untracked files in workspace are NOT in the checkpoint commit (peer will not see them):" >&2
+    echo "$UNTRACKED_OUTSIDE_SCRATCH" | sed 's/^/  /' >&2
+    echo "  → If any belong on the feature branch, run 'git add <path>' before re-invoking review-loop." >&2
+  fi
+  # -a stages tracked-modified files only. --allow-empty lets us mark a
+  # checkpoint when there is nothing new to stage.
+  git commit -am "review-loop: checkpoint before round 1" --allow-empty 2>/dev/null \
+    || git commit -m "review-loop: checkpoint before round 1" --allow-empty 2>/dev/null
 elif [[ "$GITIGNORE_MODIFIED" == "true" ]]; then
   # In read-only mode, still commit the gitignore change to avoid leaving dirty state
   git add .gitignore && git commit -m "review-loop: add .review-loop/ to gitignore" --allow-empty 2>/dev/null
