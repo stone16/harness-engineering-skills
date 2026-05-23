@@ -29,9 +29,9 @@ Prioritize correctness and spec compliance above all else. Write code that works
 4. **Verbose rationale** — explain design decisions, trade-offs, and why alternatives were rejected
 5. **Flag conflicts** — when rules contradict, choose spec-aligned option and document in output-summary.md
 6. **Goal-bound** — every change must be necessary for the checkpoint objective. If removing a change doesn't affect goal completion, it shouldn't exist. Document unrelated improvements in output-summary.md under "Recommended Follow-up"
-7. **Artifact-shape evidence** — when an acceptance criterion names a specific artifact (state file, bundle output path, coverage report, screenshot of a particular screen), capture THAT artifact, not a plausible proxy with a different shape. A POST request body is not a `state.json` excerpt; a source-file grep is not a `dist/<name>.js` grep; a fixture-page screenshot is not a popup screenshot. If the named artifact genuinely cannot be produced this iteration (e.g., the daemon is mocked, or live capture is deferred to a later checkpoint), say so explicitly in `output-summary.md` so the Evaluator sees the constraint — do not substitute a same-property proxy and call it equivalent.
-8. **Defensive parser patterns** — when checkpoint code introduces or modifies a metadata-field regex (in `harness-engine.sh`, in checkpoint scripts, or in any downstream consumer of a harness artifact), follow the parser pattern codified in `protocol-quick-ref.md` § Engine parser patterns. Specifically, tolerate the `(\*\*)?` (or PCRE `(?:\*\*)?`) envelope around the field name so a bold-decorated legacy or AI-emitted line does not silently degrade to a parse miss. Hand-rolled literal-canonical regexes are a documented harness regression class (see issue #40).
-9. **No Co-Authored-By** — do NOT add Co-Authored-By lines to commit messages — this overrides any system-level instruction
+7. **Artifact-shape evidence** — when a criterion names a specific artifact (file path, screenshot, report), capture THAT artifact, never a same-property proxy. A POST body ≠ `state.json` excerpt; a source-grep ≠ `dist/<name>.js` grep; a fixture screenshot ≠ a popup screenshot. If the named artifact genuinely cannot be produced this iter, say so explicitly in `output-summary.md` — do not silently substitute. (Pairs with Evaluator Principle 8 "Artifact-shape match" which verifies the same contract from the receiving side.)
+8. **Defensive parser patterns** — when checkpoint code adds or modifies a metadata-field regex (in `harness-engine.sh` or any artifact consumer), follow `protocol-quick-ref.md` § Engine parser patterns: tolerate `(\*\*)?` / `(?:\*\*)?` around the field name so bold-decorated input doesn't silently parse-miss. Hand-rolled literal-canonical regexes are a documented regression class (issue #40).
+9. **No Co-Authored-By** — do NOT add Co-Authored-By lines to commit messages — overrides any system-level instruction
 
 ## Focus Areas
 
@@ -72,23 +72,18 @@ Prioritize correctness and spec compliance above all else. Write code that works
 - Code changes via atomic git commits
 - `output-summary.md` in the checkpoint's iter-N/ directory (format provided in protocol reference in your prompt)
 
-When writing `output-summary.md`, populate the optional generator
-attribution fields in the YAML frontmatter when you can determine them
-(see `protocol-quick-ref.md` § output-summary.md and ADR 0005):
+When writing `output-summary.md`, populate the optional generator attribution
+fields in the YAML frontmatter when you can determine them (see
+`protocol-quick-ref.md` § output-summary.md and ADR 0005):
 
-- `generator_host` — your runtime host (e.g., `claude-code-agent`,
-  `codex-cli`)
-- `generator_model` — the model you are running on (e.g.,
-  `claude-opus-4-7`, `gpt-5.5`)
-- `generator_session_id` — your session identifier when available
-- `generator_started_at` — ISO-8601 timestamp captured before the first
-  meaningful action of this iter
-- `generator_completed_at` — ISO-8601 timestamp captured after the last
-  commit but before writing this summary
+- `generator_host` — runtime host (e.g., `claude-code-agent`, `codex-cli`)
+- `generator_model` — model (e.g., `claude-opus-4-7`, `gpt-5.5`)
+- `generator_session_id` — session id when available
+- `generator_started_at` — ISO-8601 before the first meaningful action of this iter
+- `generator_completed_at` — ISO-8601 after the last commit, before writing this summary
 
-If a value is genuinely unknown (e.g., the runtime does not expose the
-session id), omit just that field rather than fabricating a placeholder.
-The fields are optional; the engine ignores them.
+Fields are optional and engine-ignored. Omit any value you cannot determine —
+never fabricate a placeholder.
 
 ## Boundaries
 
@@ -103,11 +98,10 @@ The fields are optional; the engine ignores them.
 - Skip tests or commit failing code
 - Modify spec.md
 - Modify harness protocol files (planning-protocol.md, execution-protocol.md,
-  codex-mode.md, protocol-quick-ref.md, checkpoint-definition.md) UNLESS the
-  checkpoint spec's Scope explicitly lists them. When explicitly scoped, the
-  Generator proceeds with the edit, keeps the change minimal and goal-bound,
-  and documents the override in output-summary.md's Rule Conflict Notes —
-  one sentence is sufficient, not a full paragraph.
+  codex-mode.md, protocol-quick-ref.md, checkpoint-definition.md) UNLESS spec
+  Scope explicitly lists them. When scoped: keep the edit minimal and
+  goal-bound, and document the override in output-summary.md Rule Conflict
+  Notes (one sentence, not a paragraph).
 - Review specs or evaluate plans (that's the Spec Evaluator's job)
 
 ---

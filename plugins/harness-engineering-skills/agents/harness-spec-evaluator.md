@@ -108,72 +108,57 @@ For each checkpoint evaluate:
      approximate and instruct the Generator to resolve the canonical API from
      the installed package/docs before implementation`.
    - **cross-CP commit count vs TDD sequence contradiction** — fires when
-     Success Criteria contains an entry asserting an explicit **exact**
-     commit count `N` and the spec also contains `T` checkpoints that
-     require a Red→Green TDD sequence. A checkpoint counts toward `T` if
-     **either** of the following is true:
-     1. its acceptance criteria contain "Red commit precedes Green
-        commit" or an equivalent TDD-sequence phrase, **or**
-     2. its `Type` is `backend`, `infrastructure`, or `fullstack` — these
-        Types mandate TDD via the protocol (see
-        `harness-generator.md` Principle 2 "Type-aware testing" and
-        `protocol-quick-ref.md` §full-verify gate's "TDD Commit
-        Sequence" entry), even when the acceptance bullets do not
-        restate the requirement.
+     Success Criteria asserts an **exact** commit count `N` and the spec
+     contains `T` checkpoints requiring Red→Green TDD. A CP counts toward
+     `T` if EITHER (a) its acceptance contains "Red commit precedes Green
+     commit" or equivalent TDD phrasing, OR (b) its `Type ∈ {backend,
+     infrastructure, fullstack}` — these Types mandate TDD via protocol
+     (Generator Principle 2; quick-ref §full-verify gate's TDD Commit
+     Sequence entry) even when acceptance bullets don't restate it.
 
-     If `N < 2T + (total_CPs - T)`, the Generator will be forced to
-     choose between honoring TDD and honoring the count, and TDD always
-     wins — resulting in avoidable Rule Conflict Notes.
-     - **Exact-count phrasings that fire the warning**: "N commits land",
-       "exactly N commits", "one commit per checkpoint" (with N
-       derivable), "N total commits", "produces N commits".
-     - **Minimum-bound phrasings that do NOT fire** (Generator can satisfy
-       these with `2T + (total_CPs - T)` commits without contradiction):
-       "at least N commits", "N or more commits", "minimum N commits", "≥
-       N commits" / ">= N commits", "no fewer than N commits". When the
-       Success Criterion uses any of these forms, suppress the warning
-       even if `N < 2T + (total_CPs - T)`, because the lower bound is
-       satisfied by the actual commit count.
-     Emit `severity: warning` with `suggested_fix: reconcile the Success
-     Criterion count with checkpoint-level TDD requirements — relax the
-     count, drop the TDD-sequence acceptance, or restate the count as a
-     minimum bound (e.g. "at least N commits land")`.
+     If `N < 2T + (total_CPs - T)`, the Generator must choose between
+     honoring TDD and honoring the count (TDD always wins → avoidable
+     Rule Conflict Notes).
+     - **Exact-count phrasings that fire**: "N commits land",
+       "exactly N commits", "one commit per checkpoint" (N derivable),
+       "N total commits", "produces N commits".
+     - **Minimum-bound phrasings that do NOT fire** (lower bound is
+       satisfied by `2T + (total_CPs - T)` commits): "at least N",
+       "N or more", "minimum N", "≥ N" / ">= N", "no fewer than N".
+       Suppress even if `N < 2T + (total_CPs - T)`.
+     Emit `severity: warning` with `suggested_fix: reconcile by relaxing
+     the count, dropping the TDD-sequence acceptance, or restating the
+     count as a minimum (e.g. "at least N commits land")`.
    - **concurrency-primitive completeness audit** — fires when the spec
-     introduces or modifies a lock, queue, dispatch, fork-join, or
-     scheduler primitive. Detection: any of the keywords `lock`,
-     `flock`, `mutex`, `cohort`, `queue`, `dispatch`, `fork`, `parallel`,
-     `concurrent`, `worker`, `actor` appears in Goal, Success Criteria,
+     introduces/modifies a concurrency primitive. Detection: any keyword
+     in `{lock, flock, mutex, cohort, queue, dispatch, fork, parallel,
+     concurrent, worker, actor}` appears in Goal, Success Criteria,
      Technical Approach, or any checkpoint Scope/Acceptance. For each
-     such primitive, verify the spec has both a **producer CP** and a
-     **consumer CP** for each of the four system invariants:
+     primitive, verify the spec has both **producer CP** and **consumer
+     CP** for each of these system invariants:
      1. Every artifact written under the primitive has a hard pass-gate
-        consumer (e.g. `pass-checkpoint` blocks if `drift-event.md`
-        exists).
-     2. Attribution windows cover full multi-step operations (the lock
-        spans `git commit` AND `end-iteration`, not just `git commit`).
-     3. Peer context propagates through `assemble-context` — the
-        Generator sees what its peer is allowed to do, not just what it
-        itself is allowed to do.
+        consumer (e.g. `pass-checkpoint` blocks if `drift-event.md` exists).
+     2. Attribution windows cover full multi-step operations (lock spans
+        `git commit` AND `end-iteration`, not just `git commit`).
+     3. Peer context propagates through `assemble-context` (Generator
+        sees what its peer is allowed to do, not just itself).
      4. Every Generator-facing contract surface has a public CLI verb
-        (no internal-helper-only patterns where the spec implies a
-        verb).
-     Emit `severity: warning` with `suggested_fix: add the missing CP
-     (producer or consumer) and cite the system invariant by index`.
-     Source: review-loop findings on `parallel-cohort-execution-v1`
-     where 5 cross-CP system invariants slipped past single-CP
+        (no internal-helper-only patterns implying a verb).
+     Emit `severity: warning` with `suggested_fix: add the missing CP and
+     cite the system invariant by index`. Source: parallel-cohort-execution-v1
+     review-loop where 5 cross-CP invariants slipped past single-CP
      evaluation (issue #39).
    - **concurrency-primitive cross-model review requirement** — fires
-     when the previous audit fires AND the resolved config (via
+     when the previous audit fires AND resolved config (via
      `harness-engine.sh read-config`) has `cross_model_review: false`.
-     Cross-model review is non-optional for concurrency-primitive specs
-     because both Claude and Codex share priors that miss
-     contract-shape regressions; only a different-model peer changes
-     the outcome. Emit `severity: critical` (not warning — warnings are
-     explicitly non-blocking in this protocol, but the contract here
-     is "block spec lock until resolved"; only `severity: critical`
-     forces `verdict: revise`). Use `suggested_fix: cite the resolved
-     config layer where cross_model_review=false was set, then either
-     flip it or attach an explicit waiver to the spec body naming the
+     Both Claude and Codex share priors that miss contract-shape
+     regressions, so different-model peer review is non-optional for
+     concurrency specs. Emit `severity: critical` (NOT warning — warnings
+     are non-blocking in this protocol; only `critical` forces
+     `verdict: revise` and the rule's contract is "block spec lock
+     until resolved"). Use `suggested_fix: cite the resolved config
+     layer where cross_model_review=false was set, then either flip
+     it or attach an explicit waiver to the spec body naming the
      alternate contract-coverage path`. Source: issue #39.
 4. **Type accuracy** — is `frontend | backend | fullstack | infrastructure` correctly assigned?
    - **Canonical Type shape audit** — checkpoint metadata should use the
@@ -182,16 +167,21 @@ For each checkpoint evaluate:
      a `severity: warning` concern with `suggested_fix: normalize the line to
      '- Type: <value>' so planner, engine, and downstream tools share one
      canonical shape`.
-   - **parallel_group_safety** — applies when two or more checkpoints share
-     the same `parallel_group` value. Detection rule: run a Files of interest completeness audit by comparing path-shaped tokens in cohort members'
-     Scope and Acceptance criteria against their declared `Files of interest`, skipping paths inside fenced code blocks and inline backticked spans; run a Type compatibility audit that warns when a cohort mixes `frontend` with
-     `backend` or `infrastructure` because verification strategies differ; run a parallel_group canonical shape audit that warns when a present
-     `parallel_group` value is not a single uppercase letter A-Z. Absence of
-     `parallel_group` is the canonical serial form and emits no warning.
-     Emit `severity: warning` with `suggested_fix: extend Files of interest to include any prose-mentioned paths, split the cohort along the Type boundary, or normalize the parallel_group value to a single uppercase letter`.
-     Mirror tokens for the cohort engine contract are `BEGIN_COHORT_OK`,
-     `PASS_COHORT_OK`, and `commit_lock_timeout_seconds`; keep these aligned
-     with the protocol quick reference.
+   - **parallel_group_safety** — applies when ≥2 checkpoints share a
+     `parallel_group` value. Run three audits on the cohort:
+     1. **Files of interest completeness** — compare path-shaped tokens in
+        cohort Scope/Acceptance against declared `Files of interest`,
+        skipping paths inside fenced code blocks and inline backticked spans.
+     2. **Type compatibility** — warn when a cohort mixes `frontend` with
+        `backend` or `infrastructure` (different verification strategies).
+     3. **`parallel_group` canonical shape** — warn when the value is not
+        a single uppercase letter A-Z. Absent `parallel_group` is the
+        canonical serial form and emits no warning.
+     Emit `severity: warning` with `suggested_fix: extend Files of interest
+     for prose-mentioned paths, split the cohort along the Type boundary,
+     or normalize parallel_group to a single uppercase letter`. The engine
+     contract tokens are `BEGIN_COHORT_OK`, `PASS_COHORT_OK`,
+     `commit_lock_timeout_seconds` — keep aligned with the quick reference.
 5. **Files of interest** — are the affected files listed? Are any missing?
 
 ### Phase 3: Cybernetic Completeness
