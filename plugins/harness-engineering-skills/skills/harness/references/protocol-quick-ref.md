@@ -888,25 +888,41 @@ Every metadata regex SHOULD tolerate `(\*\*)?` (or its PCRE-style
 non-capturing equivalent `(?:\*\*)?`) around the field name. Reference
 pattern, in portable ERE form (compatible with `grep -E` and `sed -E`):
 
-```
+```regex
 ^[[:space:]]*-[[:space:]]+(\*\*)?<field>(\*\*)?:[[:space:]]+(.+)$
 ```
 
 PCRE-style equivalent (compatible with GNU `grep -P`; Bash `[[ =~ ]]`
 uses POSIX ERE, so use the ERE form above in shell scripts):
 
-```
+```regex
 ^[[:space:]]*-[[:space:]]+(?:\*\*)?<field>(?:\*\*)?:[[:space:]]+(.+)$
 ```
 
-Concretely, a metadata field named `Type` accepts both shapes on the same
-input line:
+The two forms have **different capture-group indices** for the value:
+
+- ERE `(\*\*)?<field>(\*\*)?` — value is in capture group **3** (the
+  optional `**` groups consume groups 1 and 2).
+- PCRE `(?:\*\*)?<field>(?:\*\*)?` — value is in capture group **1**
+  (the non-capturing `(?:...)` groups don't consume an index).
+
+Copying the wrong form into a parser is a silent-failure source; cite the
+form you use.
+
+Concretely, a metadata field named `Type` exercises each shape:
 
 | Shape                  | Canonical? | Engine reads it? | Spec Evaluator behavior         |
 |------------------------|------------|------------------|---------------------------------|
 | `- Type: backend`      | yes        | yes              | passes                          |
 | `- **Type**: backend`  | no (compat)| yes              | warns: normalize to canonical   |
+| `- **Type: backend`    | no (malformed) | yes (envelope is loose) | warns: paired bold markers required |
+| `- Type**: backend`    | no (malformed) | yes (envelope is loose) | warns: paired bold markers required |
 | `- *Type*: backend`    | no         | no               | error: invalid metadata         |
+
+The envelope is intentionally loose at the parser layer (independent
+`(\*\*)?` groups) so a one-sided bold typo still reaches the Spec
+Evaluator instead of disappearing as a parse miss; the Spec Evaluator is
+the strict gate that requires paired markers and emits the warning.
 
 This is the parser-side default for **all** bullet-shaped metadata
 fields, not just `Type`. New bullet fields introduced by checkpoints
