@@ -240,9 +240,13 @@ for planners — keep them mirrored.
 - `cross-CP commit count vs TDD sequence contradiction` flags a Success
   Criterion asserting an **exact** commit count `N` (e.g. "N commits land",
   "exactly N commits") combined with `T` checkpoints requiring a Red→Green
-  TDD sequence when `N < 2T + (total_CPs − T)`. Minimum-bound forms ("at
-  least N", "≥ N", "no fewer than N", "minimum N") are exempt — the lower
-  bound is satisfied by the actual commit count. Source: issue #29.
+  TDD sequence when `N < 2T + (total_CPs − T)`. A checkpoint counts toward
+  `T` if its acceptance criteria require a Red→Green sequence **or** its
+  `Type` is `backend`, `infrastructure`, or `fullstack` (per Generator
+  Principle 2 + full-verify gate's TDD Commit Sequence entry).
+  Minimum-bound forms ("at least N", "≥ N", "no fewer than N",
+  "minimum N") are exempt — the lower bound is satisfied by the actual
+  commit count. Source: issue #29.
 
 ---
 
