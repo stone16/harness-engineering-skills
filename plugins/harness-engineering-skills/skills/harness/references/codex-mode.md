@@ -34,29 +34,47 @@ CLAUDE_AGENT="$HARNESS_DIR/scripts/claude-agent-invoke.sh"
 
 ## Sub-agent Mode Expectations
 
-At the start of any `harness continue` run, the Codex host emits an
-early-run status marker naming the execution mode:
+At the start of any `harness continue` run, the Codex host emits early-run
+status markers for both the reviewer-agent path and the Generator path:
 
 ```text
 HARNESS_SUBAGENT_MODE=subagents
+HARNESS_GENERATOR_MODE=subagent
 ```
 
-or:
+If either path falls back to main-session execution, emit the corresponding
+fallback marker:
 
 ```text
 HARNESS_SUBAGENT_MODE=main-session-fallback
+HARNESS_GENERATOR_MODE=main-session-fallback
 ```
 
-The explicit fallback rule is: when a required sub-agent dispatch path is
-available (`claude-agent-invoke.sh` plus the target agent definition), use it;
-when it is missing, unavailable, or returns a tooling/runtime error before the
-agent can produce the required artifact, stop at the relevant protocol gate and
-record `main-session-fallback` rather than silently self-evaluating. Source:
-issue #14.
+The explicit fallback rules:
 
-Main-session fallback may continue only for Generator work that the Codex host
-is already allowed to perform locally. It must not write evaluator-owned
-artifacts such as `evaluation.md`, `e2e-report.md`, or retro outputs.
+- **Reviewer agents** (Spec Evaluator, Convention Scout, Evaluator, Retro) —
+  when `claude-agent-invoke.sh` plus the target agent definition are available,
+  use them. When missing, unavailable, or returning a tooling/runtime error
+  before the agent can produce the required artifact, stop at the relevant
+  protocol gate and record `HARNESS_SUBAGENT_MODE=main-session-fallback`
+  rather than silently self-evaluating. Source: issue #14.
+- **Generator** (per-checkpoint implementation) — when the Codex sub-agent
+  dispatch mechanism is available (e.g. `peer-invoke.sh --peer codex`, a
+  `codex-agent-invoke.sh` wrapper if installed, or `codex exec` from an
+  isolated `CODEX_HOME`), use it. When unavailable OR when the user has
+  explicitly opted into local implementation (e.g. via a `--generator-mode local`
+  override or a `local_generator: true` `.harness/config.json` entry), the
+  Orchestrator MAY implement locally — and MUST record
+  `HARNESS_GENERATOR_MODE=main-session-fallback` in the run's early marker
+  and in each checkpoint's `status.md` (`generator_mode: main-session-fallback`)
+  so the loss of context isolation is auditable. Source: issue #34.
+
+Reviewer-agent fallback may NOT write evaluator-owned artifacts
+(`evaluation.md`, `e2e-report.md`, retro outputs) under any circumstance —
+those gates remain hard. Generator fallback may write `output-summary.md`
+and implementation commits because the Orchestrator is itself a Generator-
+capable role; the marker exists so retro can see when context isolation was
+lost.
 
 ## Planning in Codex
 
@@ -98,8 +116,36 @@ For each checkpoint:
 
 1. `"$ENGINE" begin-checkpoint ...`
 2. `"$ENGINE" assemble-context ...`
-3. Codex implements the checkpoint locally in the current session.
-   - Do not require Codex subagents. Use them only if the user explicitly asked for delegation.
+3. **Generator dispatch — sub-agent is the default.** Spawn a fresh Codex
+   sub-process to play the Generator role for this checkpoint so the
+   Orchestrator context stays clean across the run. The sub-process reads
+   the same anti-drift envelope the Claude path uses (`context.md`, the
+   checkpoint's scope/acceptance/files-of-interest, the relevant
+   protocol-quick-ref sections) and writes the same output contract:
+   - **Output**: implementation commits on the current branch, plus
+     `.harness/<task>/checkpoints/<NN>/iter-<N>/output-summary.md` per
+     `protocol-quick-ref.md` § output-summary.md.
+   - **Session proof**: record the Codex sub-process session id to
+     `.harness/<task>/checkpoints/<NN>/iter-<N>/generator-session-id.txt`
+     so retro can confirm a fresh Generator per checkpoint.
+   - **Retry path**: on Evaluator FAIL or auto-resolvable REVIEW, the
+     Orchestrator increments the iter counter, re-dispatches a fresh
+     Generator sub-process with the prior `evaluation.md` feedback
+     injected into the prompt, and lets the new sub-process commit the
+     fix. Do NOT re-use the prior Generator session across iterations.
+   - **Dispatch mechanism**: use `peer-invoke.sh --peer codex
+     --prompt-file <generator-prompt> --output-file
+     <generator-raw-output> --session-id-file <generator-session-file>`
+     for environments where the review-loop skill is installed; a future
+     `codex-agent-invoke.sh` will provide the symmetric wrapper to
+     `claude-agent-invoke.sh`.
+   - **Fallback**: if sub-process dispatch is unavailable OR the operator
+     has opted into local implementation, the Orchestrator MAY implement
+     locally. Record `HARNESS_GENERATOR_MODE=main-session-fallback` in
+     the run marker AND `generator_mode: main-session-fallback` in the
+     checkpoint's `status.md` so the loss of context isolation is
+     visible. Issue #34.
+
 4. After each implementation iteration, invoke Claude for checkpoint evaluation:
 
 ```bash

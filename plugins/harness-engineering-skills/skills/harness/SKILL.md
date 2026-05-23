@@ -87,13 +87,13 @@ Orchestrator (you, the Main Agent — Claude Code or Codex)
 │   ├── harness-convention-scout → sub-agent, host-repo convention discovery + Card
 │   ↕ spec-review/     → iterate with Spec Evaluator on checkpoint quality
 ├── Spec Evaluator     → sub-agent, architecture + feasibility
-├── Generator          → sub-agent (or local in Codex), TDD skill preloaded
+├── Generator          → sub-agent (Claude or Codex), TDD skill preloaded
 │   ↕ evaluation       → iterate with Evaluator per checkpoint
 ├── Evaluator          → sub-agent, composite sensor
 └── Retro              → sub-agent, produces retro.md
 ```
 
-**Sub-agent dispatch:** In Claude Code use `Agent(subagent_type: "harness-*", prompt: <context>)`. In Codex use `claude-agent-invoke.sh` to dispatch via CLI. See [references/codex-mode.md](references/codex-mode.md) for Codex-specific details.
+**Sub-agent dispatch:** In Claude Code use `Agent(subagent_type: "harness-*", prompt: <context>)`. In Codex, use `claude-agent-invoke.sh` for reviewer agents (Spec Evaluator, Evaluator, Convention Scout, Retro); for the Generator role, dispatch a fresh Codex sub-process via the `peer-invoke.sh`-style pattern documented in [references/codex-mode.md](references/codex-mode.md) §Execution. Main-session local implementation is the fallback path, not the default — see codex-mode.md for the fallback contract and `HARNESS_GENERATOR_MODE` status marker.
 
 **Anti-drift mechanisms:**
 - Fresh Generator + Evaluator per checkpoint (full eigenbehavior reset)
