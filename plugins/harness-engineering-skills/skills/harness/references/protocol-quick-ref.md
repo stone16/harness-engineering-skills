@@ -258,8 +258,9 @@ for planners — keep them mirrored.
   contract surface. Source: issue #39.
 - `concurrency-primitive cross-model review requirement` fires when the
   completeness audit fires AND resolved config has
-  `cross_model_review: false`; blocks spec lock until config is flipped
-  or an explicit waiver is declared. Source: issue #39.
+  `cross_model_review: false`. Emits `severity: critical` (blocks spec
+  lock via `verdict: revise`) until the operator flips the config or
+  attaches an explicit waiver to the spec body. Source: issue #39.
 
 ---
 

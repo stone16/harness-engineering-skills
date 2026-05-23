@@ -168,11 +168,13 @@ For each checkpoint evaluate:
      Cross-model review is non-optional for concurrency-primitive specs
      because both Claude and Codex share priors that miss
      contract-shape regressions; only a different-model peer changes
-     the outcome. Block spec lock until the operator either flips the
-     config or declares an explicit waiver in the spec body. Emit
-     `severity: warning` with `suggested_fix: cite the resolved config
-     layer where cross_model_review=false was set, and either flip it
-     or attach an explicit waiver`. Source: issue #39.
+     the outcome. Emit `severity: critical` (not warning — warnings are
+     explicitly non-blocking in this protocol, but the contract here
+     is "block spec lock until resolved"; only `severity: critical`
+     forces `verdict: revise`). Use `suggested_fix: cite the resolved
+     config layer where cross_model_review=false was set, then either
+     flip it or attach an explicit waiver to the spec body naming the
+     alternate contract-coverage path`. Source: issue #39.
 4. **Type accuracy** — is `frontend | backend | fullstack | infrastructure` correctly assigned?
    - **Canonical Type shape audit** — checkpoint metadata should use the
      canonical `- Type: <value>` form. If a checkpoint uses a non-canonical
