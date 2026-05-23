@@ -138,6 +138,43 @@ For each checkpoint evaluate:
      Criterion count with checkpoint-level TDD requirements — relax the
      count, drop the TDD-sequence acceptance, or restate the count as a
      minimum bound (e.g. "at least N commits land")`.
+   - **concurrency-primitive completeness audit** — fires when the spec
+     introduces or modifies a lock, queue, dispatch, fork-join, or
+     scheduler primitive. Detection: any of the keywords `lock`,
+     `flock`, `mutex`, `cohort`, `queue`, `dispatch`, `fork`, `parallel`,
+     `concurrent`, `worker`, `actor` appears in Goal, Success Criteria,
+     Technical Approach, or any checkpoint Scope/Acceptance. For each
+     such primitive, verify the spec has both a **producer CP** and a
+     **consumer CP** for each of the four system invariants:
+     1. Every artifact written under the primitive has a hard pass-gate
+        consumer (e.g. `pass-checkpoint` blocks if `drift-event.md`
+        exists).
+     2. Attribution windows cover full multi-step operations (the lock
+        spans `git commit` AND `end-iteration`, not just `git commit`).
+     3. Peer context propagates through `assemble-context` — the
+        Generator sees what its peer is allowed to do, not just what it
+        itself is allowed to do.
+     4. Every Generator-facing contract surface has a public CLI verb
+        (no internal-helper-only patterns where the spec implies a
+        verb).
+     Emit `severity: warning` with `suggested_fix: add the missing CP
+     (producer or consumer) and cite the system invariant by index`.
+     Source: review-loop findings on `parallel-cohort-execution-v1`
+     where 5 cross-CP system invariants slipped past single-CP
+     evaluation (issue #39).
+   - **concurrency-primitive cross-model review requirement** — fires
+     when the previous audit fires AND the resolved config (via
+     `harness-engine.sh read-config`) has `cross_model_review: false`.
+     Cross-model review is non-optional for concurrency-primitive specs
+     because both Claude and Codex share priors that miss
+     contract-shape regressions; only a different-model peer changes
+     the outcome. Emit `severity: critical` (not warning — warnings are
+     explicitly non-blocking in this protocol, but the contract here
+     is "block spec lock until resolved"; only `severity: critical`
+     forces `verdict: revise`). Use `suggested_fix: cite the resolved
+     config layer where cross_model_review=false was set, then either
+     flip it or attach an explicit waiver to the spec body naming the
+     alternate contract-coverage path`. Source: issue #39.
 4. **Type accuracy** — is `frontend | backend | fullstack | infrastructure` correctly assigned?
    - **Canonical Type shape audit** — checkpoint metadata should use the
      canonical `- Type: <value>` form. If a checkpoint uses a non-canonical

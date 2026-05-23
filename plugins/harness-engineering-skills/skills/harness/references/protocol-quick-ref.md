@@ -247,6 +247,20 @@ for planners — keep them mirrored.
   Minimum-bound forms ("at least N", "≥ N", "no fewer than N",
   "minimum N") are exempt — the lower bound is satisfied by the actual
   commit count. Source: issue #29.
+- `concurrency-primitive completeness audit` flags specs that introduce
+  or modify a lock/queue/dispatch/fork-join/scheduler primitive
+  (keywords: `lock`, `flock`, `mutex`, `cohort`, `queue`, `dispatch`,
+  `fork`, `parallel`, `concurrent`, `worker`, `actor`) without naming
+  both producer and consumer CPs for each of four system invariants:
+  pass-gate consumer for every written artifact; attribution windows
+  covering full multi-step operations; peer context through
+  `assemble-context`; public CLI verb for every Generator-facing
+  contract surface. Source: issue #39.
+- `concurrency-primitive cross-model review requirement` fires when the
+  completeness audit fires AND resolved config has
+  `cross_model_review: false`. Emits `severity: critical` (blocks spec
+  lock via `verdict: revise`) until the operator flips the config or
+  attaches an explicit waiver to the spec body. Source: issue #39.
 
 ---
 
@@ -561,6 +575,8 @@ coverage_percent: <number or "N/A">
 ```
 
 The `coverage_percent` field is **parsed by the engine** in `pass-full-verify`. For backend/infra/fullstack tasks, the engine will PHASE_BLOCK if this value is below the configured threshold (default 85%). Set to `N/A` for frontend-only tasks where coverage is not measured.
+
+**Coverage-measurement gate** (`harness-evaluator.md` Principle 9): when the task includes a `backend`, `infrastructure`, or `fullstack` checkpoint OR the spec explicitly requires measured coverage, the Evaluator MUST emit a numeric `coverage_percent`. If coverage tooling is absent, the Evaluator's verdict MUST be `FAIL` with the missing tooling recorded as a hard failure — qualitative assessment ("test density consistent with 85%+") is not a substitute for measurement. Only frontend-only tasks with no spec coverage requirement may use `N/A`. Source: issue #48.
 
 Sections:
 - **Hard Failures**: list of failed checks with command, exit code, error output
