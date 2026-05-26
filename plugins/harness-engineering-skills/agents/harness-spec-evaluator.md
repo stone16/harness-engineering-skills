@@ -57,6 +57,17 @@ For each checkpoint evaluate:
    - If the Card is missing or `scout_status` is anything other than
      `complete`, record `Card unavailable - attribution deferred`; do not use
      Card-based tier attribution for this round.
+   - **coverage criterion scope/dimension ambiguity** — flags coverage
+     acceptance criteria that (a) omit lines/statements/functions/branches
+     dimensions while sibling criteria include them, (b) scope to a function
+     subset while sibling criteria scope to a whole file/package, or (c) name
+     a file/module in a per-file >=N rule that is excluded from the binding
+     Success Criteria coverage set. The planner must state the authoritative
+     gate, binding dimensions, and binding scope before execution starts.
+     Emit `severity: warning` with `suggested_fix: name the authoritative
+     coverage gate, the binding dimensions, and the binding scope explicitly
+     so checkpoint Evaluators do not resolve strict-vs-lenient coverage
+     readings after implementation`.
    - **ambiguous quantifier on cap/limit invariant** — flags acceptance
      criteria declaring a cap, limit, max-count, or eviction threshold whose
      subject admits more than one reading, for example "hard cap on file

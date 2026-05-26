@@ -16,6 +16,7 @@ MODEL_OVERRIDE=""
 TIMEOUT="${HARNESS_CLAUDE_TIMEOUT:-900}"
 BYPASS_PERMISSIONS="${HARNESS_CLAUDE_SKIP_PERMISSIONS:-1}"
 OUTPUT_FORMAT="${HARNESS_CLAUDE_OUTPUT_FORMAT:-stream-json}"
+SESSION_ID_PLACEHOLDER="__PENDING_SESSION_ID__"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -137,6 +138,60 @@ for line in frontmatter:
 PY
 }
 
+stamp_session_id_placeholder() {
+  local output_file="$1"
+  local session_id_file="$2"
+
+  if [[ -z "$session_id_file" ]]; then
+    return 0
+  fi
+
+  if [[ ! -f "$session_id_file" ]]; then
+    echo "Error: session id proof file not found: $session_id_file" >&2
+    return 1
+  fi
+
+  local session_id
+  session_id="$(tr -d '[:space:]' < "$session_id_file")"
+  if [[ -z "$session_id" ]]; then
+    echo "Error: session id proof file is empty: $session_id_file" >&2
+    return 1
+  fi
+
+  if [[ ! -f "$output_file" ]]; then
+    echo "Error: output artifact not found for session-id stamp: $output_file" >&2
+    return 1
+  fi
+
+  if ! grep -Fq "$SESSION_ID_PLACEHOLDER" "$output_file"; then
+    echo "Error: $output_file missing evaluator_session_id placeholder $SESSION_ID_PLACEHOLDER" >&2
+    echo "NEXT_STEP=Evaluator artifacts written with --session-id-file must set evaluator_session_id: $SESSION_ID_PLACEHOLDER" >&2
+    return 1
+  fi
+
+  local output_dir output_base tmp_output
+  output_dir="$(dirname "$output_file")"
+  output_base="$(basename "$output_file")"
+  tmp_output="$(mktemp "${output_dir}/.${output_base}.XXXXXX")"
+  if ! python3 - "$output_file" "$tmp_output" "$SESSION_ID_PLACEHOLDER" "$session_id" <<'PY'
+import pathlib
+import sys
+
+source = pathlib.Path(sys.argv[1])
+target = pathlib.Path(sys.argv[2])
+placeholder = sys.argv[3]
+session_id = sys.argv[4]
+
+target.write_text(source.read_text().replace(placeholder, session_id))
+PY
+  then
+    rm -f "$tmp_output"
+    return 1
+  fi
+
+  mv "$tmp_output" "$output_file"
+}
+
 parse_claude_json() {
   local log_file="$1"
   local output_file="$2"
@@ -237,6 +292,10 @@ PY
   if [[ "$is_error" == "1" ]]; then
     echo "Error: Claude agent returned an error (is_error=true in result event)" >&2
     return 1
+  fi
+
+  if [[ "$normalize_rc" -eq 0 ]]; then
+    stamp_session_id_placeholder "$output_file" "$session_id_file" || return 1
   fi
 
   return "$normalize_rc"

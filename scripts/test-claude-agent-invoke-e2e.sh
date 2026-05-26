@@ -42,12 +42,14 @@ echo "stub prompt" > "$prompt_file"
 invoke_with_stub_log() {
   local stub_log="$1"
   local output_file="$2"
+  shift 2
   HARNESS_TEST_STUB_LOG="$stub_log" \
     PATH="$workdir/bin:$PATH" \
     "$script" \
       --agent harness-evaluator \
       --prompt-file "$prompt_file" \
-      --output-file "$output_file"
+      --output-file "$output_file" \
+      "$@"
 }
 
 scenario=1
@@ -69,6 +71,54 @@ PY
 invoke_with_stub_log "$stub_log1" "$out1" > /dev/null 2>&1
 assert_contains "$out1" "verdict: pass"
 assert_contains "$out1" "Evaluation body."
+((scenario++))
+
+echo "[$scenario] session-id placeholder is stamped from proof file"
+stub_log_stamp="$workdir/stub-stamp.jsonl"
+out_stamp="$workdir/out-stamp.md"
+session_stamp="$workdir/evaluator-session-id.txt"
+python3 - "$stub_log_stamp" <<'PY'
+import json, sys
+with open(sys.argv[1], "w") as p:
+    p.write(json.dumps({"type": "system", "session_id": "s-stamp"}) + "\n")
+    p.write(json.dumps({
+        "type": "result",
+        "session_id": "s-stamp",
+        "is_error": False,
+        "result": "---\nverdict: pass\nevaluator_session_id: __PENDING_SESSION_ID__\n---\n\nEvaluation body.\n",
+    }) + "\n")
+PY
+invoke_with_stub_log "$stub_log_stamp" "$out_stamp" --session-id-file "$session_stamp" > /dev/null 2>&1
+assert_contains "$session_stamp" "s-stamp"
+assert_contains "$out_stamp" "evaluator_session_id: s-stamp"
+assert_not_contains "$out_stamp" "__PENDING_SESSION_ID__"
+((scenario++))
+
+echo "[$scenario] missing session-id placeholder fails loudly when proof file is requested"
+stub_log_missing_placeholder="$workdir/stub-missing-placeholder.jsonl"
+out_missing_placeholder="$workdir/out-missing-placeholder.md"
+session_missing_placeholder="$workdir/missing-placeholder-session-id.txt"
+python3 - "$stub_log_missing_placeholder" <<'PY'
+import json, sys
+with open(sys.argv[1], "w") as p:
+    p.write(json.dumps({"type": "system", "session_id": "s-no-placeholder"}) + "\n")
+    p.write(json.dumps({
+        "type": "result",
+        "session_id": "s-no-placeholder",
+        "is_error": False,
+        "result": "---\nverdict: pass\n---\n\nEvaluation body.\n",
+    }) + "\n")
+PY
+set +e
+invoke_with_stub_log "$stub_log_missing_placeholder" "$out_missing_placeholder" --session-id-file "$session_missing_placeholder" > "$workdir/missing-placeholder.log" 2>&1
+rc=$?
+set -e
+if [[ "$rc" -eq 0 ]]; then
+  echo "scenario $scenario: expected non-zero exit when evaluator_session_id placeholder is missing" >&2
+  cat "$workdir/missing-placeholder.log" >&2
+  exit 1
+fi
+assert_contains "$workdir/missing-placeholder.log" "missing evaluator_session_id placeholder __PENDING_SESSION_ID__"
 ((scenario++))
 
 echo "[$scenario] backtick-yaml-fenced result_text is normalized"
