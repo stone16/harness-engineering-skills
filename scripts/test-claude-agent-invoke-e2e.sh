@@ -121,6 +121,34 @@ fi
 assert_contains "$workdir/missing-placeholder.log" "missing evaluator_session_id placeholder __PENDING_SESSION_ID__"
 ((scenario++))
 
+echo "[$scenario] body-only session-id placeholder fails loudly"
+stub_log_body_only_placeholder="$workdir/stub-body-only-placeholder.jsonl"
+out_body_only_placeholder="$workdir/out-body-only-placeholder.md"
+session_body_only_placeholder="$workdir/body-only-placeholder-session-id.txt"
+python3 - "$stub_log_body_only_placeholder" <<'PY'
+import json, sys
+with open(sys.argv[1], "w") as p:
+    p.write(json.dumps({"type": "system", "session_id": "s-body-only"}) + "\n")
+    p.write(json.dumps({
+        "type": "result",
+        "session_id": "s-body-only",
+        "is_error": False,
+        "result": "---\nverdict: pass\n---\n\nBody mentions __PENDING_SESSION_ID__ but frontmatter omits evaluator_session_id.\n",
+    }) + "\n")
+PY
+set +e
+invoke_with_stub_log "$stub_log_body_only_placeholder" "$out_body_only_placeholder" --session-id-file "$session_body_only_placeholder" > "$workdir/body-only-placeholder.log" 2>&1
+rc=$?
+set -e
+if [[ "$rc" -eq 0 ]]; then
+  echo "scenario $scenario: expected non-zero exit when placeholder is outside evaluator_session_id frontmatter" >&2
+  cat "$workdir/body-only-placeholder.log" >&2
+  cat "$out_body_only_placeholder" >&2
+  exit 1
+fi
+assert_contains "$workdir/body-only-placeholder.log" "missing evaluator_session_id placeholder __PENDING_SESSION_ID__"
+((scenario++))
+
 echo "[$scenario] backtick-yaml-fenced result_text is normalized"
 stub_log2="$workdir/stub2.jsonl"
 out2="$workdir/out2.md"

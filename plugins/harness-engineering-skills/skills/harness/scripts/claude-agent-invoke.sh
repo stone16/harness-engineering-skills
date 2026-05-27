@@ -163,18 +163,13 @@ stamp_session_id_placeholder() {
     return 1
   fi
 
-  if ! grep -Fq "$SESSION_ID_PLACEHOLDER" "$output_file"; then
-    echo "Error: $output_file missing evaluator_session_id placeholder $SESSION_ID_PLACEHOLDER" >&2
-    echo "NEXT_STEP=Evaluator artifacts written with --session-id-file must set evaluator_session_id: $SESSION_ID_PLACEHOLDER" >&2
-    return 1
-  fi
-
   local output_dir output_base tmp_output
   output_dir="$(dirname "$output_file")"
   output_base="$(basename "$output_file")"
   tmp_output="$(mktemp "${output_dir}/.${output_base}.XXXXXX")"
   if ! python3 - "$output_file" "$tmp_output" "$SESSION_ID_PLACEHOLDER" "$session_id" <<'PY'
 import pathlib
+import re
 import sys
 
 source = pathlib.Path(sys.argv[1])
@@ -182,7 +177,37 @@ target = pathlib.Path(sys.argv[2])
 placeholder = sys.argv[3]
 session_id = sys.argv[4]
 
-target.write_text(source.read_text().replace(placeholder, session_id))
+text = source.read_text()
+lines = text.splitlines(keepends=True)
+if not lines or lines[0].strip() != "---":
+    print(f"Error: {source} missing YAML frontmatter for evaluator_session_id stamp", file=sys.stderr)
+    sys.exit(1)
+
+closing_index = None
+for idx, line in enumerate(lines[1:], start=1):
+    if line.strip() == "---":
+        closing_index = idx
+        break
+
+if closing_index is None:
+    print(f"Error: {source} missing YAML frontmatter closing delimiter", file=sys.stderr)
+    sys.exit(1)
+
+field_pattern = re.compile(r"^(\s*evaluator_session_id\s*:\s*)" + re.escape(placeholder) + r"(\s*(?:#.*)?)(\r?\n?)$")
+replaced = False
+for idx in range(1, closing_index):
+    match = field_pattern.match(lines[idx])
+    if match:
+        lines[idx] = f"{match.group(1)}{session_id}{match.group(2)}{match.group(3)}"
+        replaced = True
+        break
+
+if not replaced:
+    print(f"Error: {source} missing evaluator_session_id placeholder {placeholder}", file=sys.stderr)
+    print(f"NEXT_STEP=Evaluator artifacts written with --session-id-file must set evaluator_session_id: {placeholder}", file=sys.stderr)
+    sys.exit(1)
+
+target.write_text("".join(lines))
 PY
   then
     rm -f "$tmp_output"
