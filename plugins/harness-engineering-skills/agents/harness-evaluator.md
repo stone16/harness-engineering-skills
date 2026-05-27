@@ -88,6 +88,13 @@ lets retrospective analyses split same-host model versions (e.g.,
 Opus 4.6 vs 4.7). Omit the field rather than fabricating a placeholder
 when the value is genuinely unknown.
 
+When `evaluation.md` is written through `claude-agent-invoke.sh` with
+`--session-id-file`, set
+`evaluator_session_id: __PENDING_SESSION_ID__`. The wrapper replaces
+that placeholder with the canonical proof-file value after the Claude
+stream completes. Do not guess the session id or write
+`FILE_ABSENT_ORCHESTRATOR_MUST_WRITE`.
+
 ## Boundaries
 
 **Will:**

@@ -16,6 +16,7 @@ MODEL_OVERRIDE=""
 TIMEOUT="${HARNESS_CLAUDE_TIMEOUT:-900}"
 BYPASS_PERMISSIONS="${HARNESS_CLAUDE_SKIP_PERMISSIONS:-1}"
 OUTPUT_FORMAT="${HARNESS_CLAUDE_OUTPUT_FORMAT:-stream-json}"
+SESSION_ID_PLACEHOLDER="__PENDING_SESSION_ID__"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -137,6 +138,85 @@ for line in frontmatter:
 PY
 }
 
+stamp_session_id_placeholder() {
+  local output_file="$1"
+  local session_id_file="$2"
+
+  if [[ -z "$session_id_file" ]]; then
+    return 0
+  fi
+
+  if [[ ! -f "$session_id_file" ]]; then
+    echo "Error: session id proof file not found: $session_id_file" >&2
+    return 1
+  fi
+
+  local session_id
+  session_id="$(tr -d '[:space:]' < "$session_id_file")"
+  if [[ -z "$session_id" ]]; then
+    echo "Error: session id proof file is empty: $session_id_file" >&2
+    return 1
+  fi
+
+  if [[ ! -f "$output_file" ]]; then
+    echo "Error: output artifact not found for session-id stamp: $output_file" >&2
+    return 1
+  fi
+
+  local output_dir output_base tmp_output
+  output_dir="$(dirname "$output_file")"
+  output_base="$(basename "$output_file")"
+  tmp_output="$(mktemp "${output_dir}/.${output_base}.XXXXXX")"
+  if ! python3 - "$output_file" "$tmp_output" "$SESSION_ID_PLACEHOLDER" "$session_id" <<'PY'
+import pathlib
+import re
+import sys
+
+source = pathlib.Path(sys.argv[1])
+target = pathlib.Path(sys.argv[2])
+placeholder = sys.argv[3]
+session_id = sys.argv[4]
+
+text = source.read_text()
+lines = text.splitlines(keepends=True)
+if not lines or lines[0].strip() != "---":
+    print(f"Error: {source} missing YAML frontmatter for evaluator_session_id stamp", file=sys.stderr)
+    sys.exit(1)
+
+closing_index = None
+for idx, line in enumerate(lines[1:], start=1):
+    if line.strip() == "---":
+        closing_index = idx
+        break
+
+if closing_index is None:
+    print(f"Error: {source} missing YAML frontmatter closing delimiter", file=sys.stderr)
+    sys.exit(1)
+
+field_pattern = re.compile(r"^(\s*evaluator_session_id\s*:\s*)" + re.escape(placeholder) + r"(\s*(?:#.*)?)(\r?\n?)$")
+replaced = False
+for idx in range(1, closing_index):
+    match = field_pattern.match(lines[idx])
+    if match:
+        lines[idx] = f"{match.group(1)}{session_id}{match.group(2)}{match.group(3)}"
+        replaced = True
+        break
+
+if not replaced:
+    print(f"Error: {source} missing evaluator_session_id placeholder {placeholder}", file=sys.stderr)
+    print(f"NEXT_STEP=Evaluator artifacts written with --session-id-file must set evaluator_session_id: {placeholder}", file=sys.stderr)
+    sys.exit(1)
+
+target.write_text("".join(lines))
+PY
+  then
+    rm -f "$tmp_output"
+    return 1
+  fi
+
+  mv "$tmp_output" "$output_file"
+}
+
 parse_claude_json() {
   local log_file="$1"
   local output_file="$2"
@@ -237,6 +317,10 @@ PY
   if [[ "$is_error" == "1" ]]; then
     echo "Error: Claude agent returned an error (is_error=true in result event)" >&2
     return 1
+  fi
+
+  if [[ "$normalize_rc" -eq 0 ]]; then
+    stamp_session_id_placeholder "$output_file" "$session_id_file" || return 1
   fi
 
   return "$normalize_rc"

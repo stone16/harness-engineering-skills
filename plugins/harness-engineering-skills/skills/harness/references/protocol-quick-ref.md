@@ -485,7 +485,7 @@ iteration: <number>
 verdict: PASS | FAIL | REVIEW
 evaluator_agent: harness-evaluator
 evaluator_host: claude-code-agent | claude-cli | codex-cli | gemini-cli
-evaluator_session_id: <session id from evaluator agent>
+evaluator_session_id: __PENDING_SESSION_ID__
 # Optional evaluator model (see ADR 0005). Recorded for symmetry with
 # generator_model and planner_model. Engine ignores; older evaluations
 # without it remain valid.
@@ -500,6 +500,14 @@ magnitude_advisory: true | false
 ```
 
 The `verdict` frontmatter is parsed by `$ENGINE pass-checkpoint`. It must match the Verdict section. A checkpoint cannot pass unless the latest iteration's `evaluation.md` has `verdict: PASS`, and the same iteration contains `evaluator-session-id.txt` with a session id that was not used by any prior checkpoint.
+
+When the Evaluator is invoked through `claude-agent-invoke.sh` with
+`--session-id-file`, `evaluator_session_id` MUST be the literal
+`__PENDING_SESSION_ID__` placeholder in the Evaluator-authored
+artifact. The wrapper writes `evaluator-session-id.txt` from the Claude
+stream and then deterministically replaces the placeholder in
+`evaluation.md`. Missing placeholder or missing proof file is a wrapper
+error.
 
 When `magnitude_advisory: true`, evaluation.md MUST also contain a `## Magnitude Advisory` section recording: actual insertions vs threshold, actual file count vs threshold, the goal-relevance audit result (every file group's spec mapping), and the Size Waiver Rationale text from output-summary.md. This makes the overrun-accepted decision auditable in retro without having to cross-reference output-summary.md.
 
