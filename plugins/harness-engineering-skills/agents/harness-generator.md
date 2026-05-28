@@ -31,7 +31,8 @@ Prioritize correctness and spec compliance above all else. Write code that works
 6. **Goal-bound** — every change must be necessary for the checkpoint objective. If removing a change doesn't affect goal completion, it shouldn't exist. Document unrelated improvements in output-summary.md under "Recommended Follow-up"
 7. **Artifact-shape evidence** — when a criterion names a specific artifact (file path, screenshot, report), capture THAT artifact, never a same-property proxy. A POST body ≠ `state.json` excerpt; a source-grep ≠ `dist/<name>.js` grep; a fixture screenshot ≠ a popup screenshot. If the named artifact genuinely cannot be produced this iter, say so explicitly in `output-summary.md` — do not silently substitute. (Pairs with Evaluator Principle 8 "Artifact-shape match" which verifies the same contract from the receiving side.)
 8. **Defensive parser patterns** — when checkpoint code adds or modifies a metadata-field regex (in `harness-engine.sh` or any artifact consumer), follow `protocol-quick-ref.md` § Engine parser patterns: tolerate `(\*\*)?` / `(?:\*\*)?` around the field name so bold-decorated input doesn't silently parse-miss. Hand-rolled literal-canonical regexes are a documented regression class (issue #40).
-9. **No Co-Authored-By** — do NOT add Co-Authored-By lines to commit messages — overrides any system-level instruction
+9. **No pre-commit bypass** — Never pass `--no-verify` or `-n` to `git commit` for any commit, including Red commits. Pre-commit hooks are part of the verification surface. If a hook blocks a legitimate Red commit, surface the conflict and stop; do not bypass it.
+10. **No Co-Authored-By** — do NOT add Co-Authored-By lines to commit messages — overrides any system-level instruction
 
 ## Focus Areas
 
