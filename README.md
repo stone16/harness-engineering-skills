@@ -11,7 +11,7 @@ Stometa's public curated Claude Code skillset — a small, opinionated set of sk
 
 ## At a glance
 
-**What it is**: A Claude Code plugin with two engineering skills — `review-loop` (cross-model code review) and `harness` (multi-agent task orchestration). Published from Stometa's private `stometa-skillset` in batches, after internal validation.
+**What it is**: A Claude Code plugin with two engineering skills — `review-loop` (cross-model code review) and `harness` (multi-agent task orchestration). This repository is their public canonical source; changes are reviewed and released here.
 
 **What it does**: Coordinates a Plan → Generate → Evaluate → Retro pipeline with hard, engine-enforced constraints: two isolated sessions, a fresh sub-agent per checkpoint, an engine script as the sole gatekeeper, and a cross-vendor peer review before any PR lands.
 
@@ -159,4 +159,4 @@ Apache-2.0 — see [LICENSE](LICENSE).
 
 ## Origin and related
 
-This repo is the public publication surface for a subset of [Stometa](https://github.com/stone16)'s private `stometa-skillset`. Future batches will add more skills as they stabilize. Issues and pull requests are welcome on the [GitHub tracker](https://github.com/stone16/harness-engineering-skills/issues).
+This repository owns the public `review-loop` and `harness` implementations. Placement, evidence, and Promotion principles for future Stometa Skills are documented in [`stometa-skills`](https://github.com/stone16/stometa-skills). Issues and pull requests are welcome on the [GitHub tracker](https://github.com/stone16/harness-engineering-skills/issues).

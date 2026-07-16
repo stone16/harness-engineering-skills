@@ -5,7 +5,7 @@
     "url": "https://github.com/stone16"
   },
   "metadata": {
-    "description": "Stometa's public curated Claude Code skillset — a small, opinionated set of engineering skills (review-loop, harness) published as one plugin, extracted periodically from the private stometa-skillset.",
+    "description": "Stometa's public curated Claude Code skillset — review-loop and harness, maintained here as one public plugin.",
     "version": "1.0.0"
   },
   "plugins": [
