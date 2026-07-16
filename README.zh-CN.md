@@ -11,7 +11,7 @@ Stometa 对外公开的 Claude Code 精选技能集 —— 一套我们自己每
 
 ## 一眼看清
 
-**是什么**：Claude Code 插件，包含两个工程化技能——`review-loop`（跨模型代码审查）和 `harness`（多智能体任务编排）。来自 Stometa 私有仓库 `stometa-skillset`，经内部验证后定期批次对外发布。
+**是什么**：Claude Code 插件，包含两个工程化技能——`review-loop`（跨模型代码审查）和 `harness`（多智能体任务编排）。本仓库是这两个 Skill 的 public canonical source，所有变更都在这里 review 与发布。
 
 **做什么**：把"规划 → 生成 → 评审 → 复盘"编排成受控制论（cybernetics）启发的流水线：上下文强制双会话隔离、每个 checkpoint 全新子智能体、引擎脚本持有状态与闸门、跨厂商 peer 评审。
 
@@ -159,4 +159,4 @@ Apache-2.0 —— 详见 [LICENSE](LICENSE)。
 
 ## 来源与相关项目
 
-本仓库是 [Stometa](https://github.com/stone16) 私有 `stometa-skillset` 部分技能的公开发布窗口。后续批次会在更多技能成熟后继续发布。Issue 和 PR 欢迎提到 [GitHub tracker](https://github.com/stone16/harness-engineering-skills/issues)。
+本仓库维护公开的 `review-loop` 与 `harness` 实现。未来 Stometa Skills 的 placement、evidence 与 Promotion 原则记录在 [`stometa-skills`](https://github.com/stone16/stometa-skills)。Issue 和 PR 欢迎提到 [GitHub tracker](https://github.com/stone16/harness-engineering-skills/issues)。

@@ -1,10 +1,10 @@
 # harness-engineering-skills
 
-> Stometa's public curated Claude Code skillset — a small, opinionated set of engineering skills published as one Claude Code plugin, extracted periodically from the private `stometa-skillset`.
+> Stometa's public curated Claude Code skillset — a small, opinionated set of engineering skills maintained here as one Claude Code plugin.
 
 ## What this repo is
 
-This repository is the public publication surface for selected skills from Stometa's private `stometa-skillset`. The first batch ships a single Claude Code plugin, `harness-engineering-skills`, containing two skills: `review-loop` and `harness`. Future batches will add more skills as they stabilize internally.
+This repository is the public canonical source for one Claude Code plugin, `harness-engineering-skills`, containing two skills: `review-loop` and `harness`. Changes are reviewed, versioned, and released here.
 
 ## Skills in this release
 
@@ -36,4 +36,4 @@ claude plugin install harness-engineering-skills@stometa
 - [README (中文)](README.zh-CN.md)
 - [LICENSE](LICENSE)
 - GitHub: https://github.com/stone16/harness-engineering-skills
-- Private origin (for context, not public): Stometa's `stometa-skillset`.
+- Stometa Skills operating model: https://github.com/stone16/stometa-skills
