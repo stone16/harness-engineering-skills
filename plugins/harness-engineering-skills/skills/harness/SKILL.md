@@ -1,23 +1,25 @@
 ---
 name: harness
 version: 0.17.0
-description: |
-  Cybernetics-based multi-agent orchestration for complex tasks. Coordinates a
-  Planner → Generator → Evaluator → Retro pipeline with clean-context sub-agents,
-  per-checkpoint drift prevention, and persistent retro learning.
-
-  Recommended workflow: Claude Code plans the spec (Session 1), Codex executes
-  autonomously (Session 2), Claude CLI reviews as cross-model peer.
-
-  Use when: "harness this task", "use harness", "orchestrate this",
-  "harness plan", "harness continue", "harness execute <task-id>",
-  "harness <spec-name>", or when a task requires structured multi-agent coordination.
+description: Plan or execute complex tasks through the harness checkpoint, evaluation, and retro workflow.
 ---
 
 # Harness — Multi-Agent Orchestration
 
 Orchestrate complex tasks through Planning -> Generation -> Evaluation -> Retro.
 Fresh sub-agents per checkpoint prevent drift. Retro accumulates learning across tasks.
+
+## Protocol Loading
+
+This skill splits into two protocol files to minimize context usage. **Read the one matching your intent before proceeding.**
+
+| Intent | Trigger phrases | Action |
+|--------|----------------|--------|
+| **Planning** | "harness plan", "harness this task", "use harness", "harness spec" | Read [references/planning-protocol.md](references/planning-protocol.md) |
+| **Execution** | "harness continue", "harness execute <task-id>", "harness <spec-name>" | Read [references/execution-protocol.md](references/execution-protocol.md) |
+
+**After loading the protocol, follow it completely.** Do not proceed without reading the appropriate reference file.
+
 
 ## Recommended Workflow
 
@@ -138,17 +140,6 @@ Orchestrator (you, the Main Agent — Claude Code or Codex)
 ```
 
 Gitignore entries are auto-added by `$ENGINE init`.
-
-## Protocol Loading
-
-This skill splits into two protocol files to minimize context usage. **Read the one matching your intent before proceeding.**
-
-| Intent | Trigger phrases | Action |
-|--------|----------------|--------|
-| **Planning** | "harness plan", "harness this task", "use harness", "harness spec" | Read [references/planning-protocol.md](references/planning-protocol.md) |
-| **Execution** | "harness continue", "harness execute <task-id>", "harness <spec-name>" | Read [references/execution-protocol.md](references/execution-protocol.md) |
-
-**After loading the protocol, follow it completely.** Do not proceed without reading the appropriate reference file.
 
 ## Reference Files
 

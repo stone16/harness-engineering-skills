@@ -1,14 +1,7 @@
 ---
 name: review-loop
 version: 1.4.0
-description: |
-  Cross-LLM iterative code review loop. Spawns a peer reviewer (Codex, Claude, or Gemini CLI)
-  to review code changes, then iterates until both agents agree on the final code state.
-  Code gets modified during the loop — the final output is improved code + consensus report.
-
-  Use when: "review loop", "peer review", "cross review", "review with codex",
-  "review with claude", "review with gemini", "让 codex review", "让 claude review",
-  "交叉 review", "peer review 这段代码", "code review loop", "iterative review"
+description: Run a bounded cross-model peer review and fix loop, or report findings in read-only mode.
 ---
 
 # Review Loop — Cross-LLM Iterative Code Review
